@@ -36,18 +36,23 @@ class SINDy(ODESystem):
 
     def ode_equations(self, x, u=None):
         """
-        :param x: (torch.tensor) time series data
+        Compute the time derivative of state variables using SINDy equations.
+
+        :param x: (torch.tensor) Current state values
+        :param u: (torch.tensor) Control input (optional)
         """
-        #assert x.ndim == 2, "Input must not be empty"
-        lib_eval = None
+        # Move tensors to the same device
+        device = self.coef.device  # Get device of trainable parameters
+        x = x.to(device)
+        if u is not None:
+            u = u.to(device)
+
         if u is None:
-            #assert x.shape[1] == self.library.shape[1], "Must have same number of states as insize"
             lib_eval = self.library.evaluate(x)
-
         else:
-            #assert x.shape[1] + u.shape[1] == self.library.shape[1], "Must have same number of states and inputs as library"
-            lib_eval = self.library.evaluate(x,u)
+            lib_eval = self.library.evaluate(x, u)
 
+        # Compute dx/dt
         output = torch.matmul(lib_eval, self.coef)
         return output
 
@@ -78,6 +83,3 @@ class SINDy(ODESystem):
         assert new_params.requires_grad, "Must require gradients"
 
         self.coef = new_params
-
-
-

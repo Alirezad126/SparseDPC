@@ -43,12 +43,13 @@ class FunctionLibrary:
         :param u: (torch.Tensor) a two-dimensional matrix of control inputs
         :return: (torch.Tensor, shape=[self.shape + x.shape + u.shape])
         """
-        output = torch.zeros(size=(x.shape[0], self.shape[0]))
+        device = x.device
+        output = torch.zeros(size=(x.shape[0], self.shape[0])).to(device)
         for i in range(self.shape[0]):
             try:
-                output[:, i] = self.library[i](x, u)
+                output[:, i] = self.library[i](x, u).to(device)
             except:
-                output[:, i] = self.library[i](x)
+                output[:, i] = self.library[i](x).to(device)
 
         return output
 
@@ -154,10 +155,11 @@ class PolynomialLibrary(FunctionLibrary):
         :param X: (torch.Tensor) the two-dimensional dataset to put through the library
         :return: (torch.Tensor, [# of rows of X, number of functions]) the library evaluated at X
         """
-        output = torch.ones((X.shape[0], self.shape[0]))
+        device = X.device
+        output = torch.ones((X.shape[0], self.shape[0])).to(device)
         for i in range(self.shape[0]):
             for func in self.library[i]:
-                output[:, i] *= func(X, u)
+                output[:, i] *= func(X, u).to(device)
 
         return output
 
