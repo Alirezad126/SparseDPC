@@ -4,4 +4,4 @@ This code showcases the ability of Sparse dictionary control policies, using [Di
 
 ### Running Code
 
-In order to have the proper implementation of SINDy, be sure to copy [SINDy.py](sindy.py) and [library.py](library.py) into the working directory for the code.
+In order to have the proper implementation of SINDy, be sure to copy [SINDy.py](src/sindy.py) and [library.py](src/library.py) into the working directory for the code.

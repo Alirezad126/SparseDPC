@@ -1,6 +1,7 @@
 import torch
 from neuromancer.dynamics.ode import ODESystem
-from library import FunctionLibrary
+from SparseDPC.src.sindy.library import FunctionLibrary
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class SINDy(ODESystem):
     """
@@ -12,8 +13,8 @@ class SINDy(ODESystem):
     def __init__(
         self,
         library,
-        threshold=1e-2,
-        n_out=None
+        n_out=None,
+        main_idx=0,
     ):
         """
         :param library: (FunctionLibrary) the library of candidate functions
@@ -29,10 +30,10 @@ class SINDy(ODESystem):
 
 
         self.library = library
-        self.threshold = threshold
         init_coef = torch.rand((self.library.shape[0], self.n_out))
-        self.coef = torch.nn.Parameter(init_coef, requires_grad=True)
+        self.coef = torch.nn.Parameter(init_coef, requires_grad=True).to(device)
         self.float()
+        self.main_idx = main_idx
 
     def ode_equations(self, x, u=None):
         """
@@ -66,12 +67,11 @@ class SINDy(ODESystem):
         return_str = ""
 
         for i in range(self.nx):
-            return_str += f"dx{i}/dt = "
+            return_str += f"dx{self.main_idx}/dt = "
             for j in range(len(f_names)):
                 coef = self.coef[j, i]
-                if torch.abs(coef) > self.threshold:
-                    func = f_names[j]
-                    return_str += f"{coef:.3f}*{func} + "
+                func = f_names[j]
+                return_str += f"{coef:.3f}*{func} + "
             return_str = return_str[:-2]
             return_str += "\n"
 

@@ -38,20 +38,21 @@ class FunctionLibrary:
             self.function_names = self.__str__()
 
     def evaluate(self, x, u=None):
-        """
-        :param x: (torch.Tensor) an array of values to evaluate the functions at
-        :param u: (torch.Tensor) a two-dimensional matrix of control inputs
-        :return: (torch.Tensor, shape=[self.shape + x.shape + u.shape])
-        """
         device = x.device
-        output = torch.zeros(size=(x.shape[0], self.shape[0])).to(device)
-        for i in range(self.shape[0]):
-            try:
-                output[:, i] = self.library[i](x, u).to(device)
-            except:
-                output[:, i] = self.library[i](x).to(device)
+        B = x.size(0)
+        theta = torch.empty(B, len(self.library), device=device, dtype=x.dtype)
 
-        return output
+        for k, f in enumerate(self.library):
+            try:
+                theta[:, k] = f(x, u)
+            except TypeError:  # function ignores u
+                theta[:, k] = f(x)
+
+        if hasattr(self, "active_idx"):
+            theta = theta[:, self.active_idx]
+
+        return theta
+
 
     def __str__(self):
         """
@@ -67,7 +68,6 @@ class FunctionLibrary:
             for i in range(self.shape[0]):
                 out_str += f"f{i}, "
         return out_str[:-2]
-
 
 class PolynomialLibrary(FunctionLibrary):
     def __init__(
