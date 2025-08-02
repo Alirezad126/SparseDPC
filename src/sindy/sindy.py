@@ -5,35 +5,42 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class SINDy(ODESystem):
     """
-    Sparse Identification of Nonlinear Dynamics
-    Reference: https://www.pnas.org/doi/10.1073/pnas.1517384113
+    Sparse Identification of Non-Linear Dynamics
     """
-
 
     def __init__(
         self,
-        library,
-        n_out=None,
-        main_idx=0,
+        library: FunctionLibrary,
+        n_out: int | None = None,
+        main_idx: int     = 0,
+        policy_name: str | None = None,
+        seed: int | None  = None,            # ← new
     ):
-        """
-        :param library: (FunctionLibrary) the library of candidate functions
-        :param threshold: (float) all functions with coefficients lower than this are omitted
-        """
-        assert isinstance(library, FunctionLibrary), "Must be valid library"
+        assert isinstance(library, FunctionLibrary), "`library` must be FunctionLibrary"
 
-        self.n_out = n_out
-        if n_out is None:
-            self.n_out = library.n_features
-
+        self.n_out = n_out or library.n_features
         super().__init__(library.shape[1], self.n_out)
 
+        self.library     = library
+        self.main_idx    = main_idx
+        self.policy_name = policy_name
 
-        self.library = library
-        init_coef = torch.rand((self.library.shape[0], self.n_out))
-        self.coef = torch.nn.Parameter(init_coef, requires_grad=True).to(device)
+        # ---------------------------------------------------------------
+        # reproducible initialisation
+        # ---------------------------------------------------------------
+        if seed is None:
+            gen = None                       # use global RNG
+        else:
+            gen = torch.Generator(device=device).manual_seed(seed)
+
+        init_coef = 0.5 * (2 * torch.rand(
+            (self.library.shape[0], self.n_out), generator=gen, device=device
+        ) - 1)
+
+        self.coef = torch.nn.Parameter(init_coef, requires_grad=True)
         self.float()
         self.main_idx = main_idx
+        self.policy_name = policy_name
 
     def ode_equations(self, x, u=None):
         """
@@ -67,7 +74,10 @@ class SINDy(ODESystem):
         return_str = ""
 
         for i in range(self.nx):
-            return_str += f"dx{self.main_idx}/dt = "
+            if self.policy_name is None:
+                return_str += f"dx{self.main_idx}/dt = "
+            else:
+                return_str += f"{self.policy_name} = "
             for j in range(len(f_names)):
                 coef = self.coef[j, i]
                 func = f_names[j]

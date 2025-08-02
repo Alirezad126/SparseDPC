@@ -79,3 +79,71 @@ def get_data(
     test_dict = _tensorise(test_dict_raw, keep_1d=True)
 
     return train_loader, dev_loader, test_dict
+
+from neuromancer.dataset import DictDataset
+from torch.utils.data import DataLoader
+
+from neuromancer.dataset import DictDataset
+from torch.utils.data import DataLoader
+import torch
+
+
+def get_policy_data(
+        nsteps: int,
+        n_samples: int,
+        nx: int,
+        device: torch.device,
+        *,
+        same_ref_for_all_states: bool = True,
+        batch_size: int = 200,
+        seed: int | None = None,                 # ← new
+):
+    """
+    Build reproducible train / dev loaders.
+
+    If `seed` is None the function behaves exactly as before.
+    """
+
+    # ------------------------------------------------------------------ #
+    # prepare two torch.Generators
+    # ------------------------------------------------------------------ #
+    if seed is None:
+        gen_train = gen_dev = None          # fall back to global RNG
+    else:
+        gen_train = torch.Generator(device=device).manual_seed(seed)
+        gen_dev   = torch.Generator(device=device).manual_seed(seed + 1)
+
+    # ------------------------------------------------------------------ #
+    def _build_split(name: str, gen: torch.Generator | None):
+        # reference trajectories --------------------------------------- #
+        if same_ref_for_all_states:
+            levels = torch.rand(n_samples, 1, 1, device=device, generator=gen)
+            ref    = levels.repeat(1, nsteps + 1, nx)
+        else:
+            levels = torch.rand(n_samples, 1, nx, device=device, generator=gen)
+            ref    = levels.repeat(1, nsteps + 1, 1)
+
+        # initial states ----------------------------------------------- #
+        xn = torch.rand(n_samples, 1, nx, device=device, generator=gen)
+
+        # dictionary ---------------------------------------------------- #
+        d = {'xn': xn, 'r': ref}
+        for i in range(nx):
+            d[f"x{i}_n"] = xn[:, :, i:i+1]
+            d[f"r{i}"]   = ref[:, :, i:i+1]
+
+        return DictDataset(d, name=name)
+
+    # ------------------------------------------------------------------ #
+    # build datasets & loaders
+    # ------------------------------------------------------------------ #
+    train_data = _build_split('train', gen_train)
+    dev_data   = _build_split('dev',   gen_dev)
+
+    train_loader = DataLoader(train_data, batch_size=batch_size,
+                              shuffle=False, collate_fn=train_data.collate_fn)
+    dev_loader   = DataLoader(dev_data,   batch_size=batch_size,
+                              shuffle=False, collate_fn=dev_data.collate_fn)
+
+    return train_loader, dev_loader
+

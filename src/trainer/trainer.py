@@ -572,11 +572,17 @@ class SparseTrainer:
 
             # ---- Re-init ALL policies if any changed ----------------------- #
             if changed:
-                print("\n⇒ Active-set changed in at least one model; re-initialising ALL.")
+                print("\n⇒ Active-set changed; only adding small noise to surviving rows.")
                 for idx, (fp, active) in enumerate(zip(self.fx_models, active_lists)):
-                    new_coef = torch.randn_like(fp.coef[active]) * 1e-2
-                    fp.coef  = torch.nn.Parameter(new_coef, requires_grad=True)
+                    # keep existing values …
+                    keep_coef = fp.coef[active].detach()
+                    # … add 10 % Gaussian noise
+                    noise = 0.10 * torch.randn_like(keep_coef)
+                    fp.coef = torch.nn.Parameter(keep_coef + noise, requires_grad=True)
+
+                    # new Parameter object → rebuild optimiser
                     self.optimizers[idx] = torch.optim.Adam(fp.parameters(), lr=self.lr)
+
             else:
                 print("\n⇒ No change in active sets; coefficients kept.")
 

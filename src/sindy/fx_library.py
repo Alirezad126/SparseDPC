@@ -2,8 +2,7 @@
 import torch
 from SparseDPC.src.sindy.library import FunctionLibrary
 from SparseDPC.src.sindy.sindy import SINDy
-
-def fx_library(main_idx: int, nx: int, nu: int, device):
+def fx_library(main_idx: int, nx: int, nu: int, seed: int):
     """
     Build a SINDy library whose *first* column is x_{main_idx}
     and whose remaining columns are all other x_j plus controls.
@@ -83,4 +82,69 @@ def fx_library(main_idx: int, nx: int, nu: int, device):
     # create library + SINDy model -------------------------------------------
     lib = FunctionLibrary(theta_funs, n_features=1,
                           n_control=nu, function_names=theta_names)
-    return SINDy(library=lib, main_idx= main_idx)
+    return SINDy(library=lib, main_idx= main_idx, seed=seed)
+
+
+import itertools
+
+def fx_policy_library(nx: int, nref: int, policy_name: str, seed: int):
+    n_features = nx
+    nref = nref
+
+    theta_funs = []
+    theta_names = []
+
+    theta_funs += [(lambda X, r, i=i: X[:, i]) for i in range(n_features)]
+    theta_names += [f"x_{i}" for i in range(n_features)]
+
+    theta_funs += [(lambda X, r, i=i: torch.sin(X[:, i])) for i in range(n_features)]
+    theta_names += [f"sin(x_{i})" for i in range(n_features)]
+
+    theta_funs += [(lambda X, r, i=i: torch.cos(X[:, i])) for i in range(n_features)]
+    theta_names += [f"cos(x_{i})" for i in range(n_features)]
+
+    theta_funs += [(lambda X, r, i=i: torch.sin(2*X[:, i])) for i in range(n_features)]
+    theta_names += [f"sin(2*x_{i})" for i in range(n_features)]
+
+    theta_funs += [(lambda X, r, i=i: torch.cos(2*X[:, i])) for i in range(n_features)]
+    theta_names += [f"cos(2*x_{i})" for i in range(n_features)]
+    #
+    theta_funs += [(lambda X, r, i=i: X[:, i] * torch.sin(X[:, i])) for i in range(n_features)]
+    theta_names += [f"x_{i}*sin(x_{i})" for i in range(n_features)]
+
+    theta_funs += [(lambda X, r, i=i: X[:, i] * torch.cos(X[:, i])) for i in range(n_features)]
+    theta_names += [f"x_{i}*cos(x_{i})" for i in range(n_features)]
+
+
+    for i, j in itertools.combinations(range(n_features), 2):
+        theta_funs.append(lambda X, r, i=i, j=j: X[:, i] * X[:, j])
+        theta_names.append(f"x_{i} * x_{j}")
+
+    theta_funs += [(lambda X, r, i=i: r[:, i]) for i in range(nref)]
+    theta_names += [f"r_{i}" for i in range(nref)]
+
+    theta_funs += [(lambda X, r, i=i: torch.cos(r[:, i])) for i in range(nref)]
+    theta_names += [f"cos(r_{i})" for i in range(nref)]
+
+    theta_funs += [(lambda X, r, i=i: torch.sin(r[:, i])) for i in range(nref)]
+    theta_names += [f"sin(r_{i})" for i in range(nref)]
+
+    theta_funs += [(lambda X, r, i=i: torch.cos(2*r[:, i])) for i in range(nref)]
+    theta_names += [f"cos(2*r_{i})" for i in range(nref)]
+
+    theta_funs += [(lambda X, r, i=i: torch.sin(2*r[:, i])) for i in range(nref)]
+    theta_names += [f"sin(2*r_{i})" for i in range(nref)]
+
+    theta_funs += [(lambda X, r, i=i, j=j: X[:, i] * r[:, j]) for i in range(n_features) for j in range(nref)]
+    theta_names += [f"x_{i} * r_{j}" for i in range(n_features) for j in range(nref)]
+
+    theta_funs += [(lambda X, r, i=i, j=j: X[:, i]**2 * r[:, j]) for i in range(n_features) for j in range(nref)]
+    theta_names += [f"x_{i}^2 * r_{j}" for i in range(n_features) for j in range(nref)]
+
+    theta_funs += [(lambda X, r, i=i, j=j: X[:, i] * r[:, j]**2) for i in range(n_features) for j in range(nref)]
+    theta_names += [f"x_{i} * r_{j}^2" for i in range(n_features) for j in range(nref)]
+
+    # Create function library
+    theta_library = FunctionLibrary(theta_funs, 1, nref, theta_names)
+    # Return the SINDy model
+    return SINDy(library=theta_library, policy_name=policy_name, seed=seed)
