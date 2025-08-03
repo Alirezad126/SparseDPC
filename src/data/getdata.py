@@ -95,6 +95,7 @@ def get_policy_data(
         device: torch.device,
         *,
         same_ref_for_all_states: bool = True,
+        zero_refs: bool = False,
         batch_size: int = 200,
         seed: int | None = None,                 # ← new
 ):
@@ -117,8 +118,12 @@ def get_policy_data(
     def _build_split(name: str, gen: torch.Generator | None):
         # reference trajectories --------------------------------------- #
         if same_ref_for_all_states:
-            levels = torch.rand(n_samples, 1, 1, device=device, generator=gen)
-            ref    = levels.repeat(1, nsteps + 1, nx)
+            if zero_refs:
+                levels = torch.zeros(n_samples, 1, 1, device=device)
+                ref = levels.repeat(1, nsteps + 1, nx)
+            else:
+                levels = torch.rand(n_samples, 1, 1, device=device, generator=gen)
+                ref    = levels.repeat(1, nsteps + 1, nx)
         else:
             levels = torch.rand(n_samples, 1, nx, device=device, generator=gen)
             ref    = levels.repeat(1, nsteps + 1, 1)

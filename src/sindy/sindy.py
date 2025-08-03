@@ -1,7 +1,6 @@
 import torch
 from neuromancer.dynamics.ode import ODESystem
 from SparseDPC.src.sindy.library import FunctionLibrary
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class SINDy(ODESystem):
     """
@@ -14,7 +13,8 @@ class SINDy(ODESystem):
         n_out: int | None = None,
         main_idx: int     = 0,
         policy_name: str | None = None,
-        seed: int | None  = None,            # ← new
+        seed: int | None  = None,
+        device: torch.device = torch.device("cpu"),
     ):
         assert isinstance(library, FunctionLibrary), "`library` must be FunctionLibrary"
 
