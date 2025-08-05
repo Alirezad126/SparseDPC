@@ -8,7 +8,8 @@ setup(
     author_email='adanesh6@jh.edu',
     url='https://github.com/Alirezad126/SparseDPC',
     python_requires='>=3.7',
-    packages=find_packages(),
+    packages=find_packages(where="src"),
+    package_dir={"": "src"},
     install_requires=[
         'neuromancer',
     ],
