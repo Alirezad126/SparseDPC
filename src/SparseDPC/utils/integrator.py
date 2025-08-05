@@ -1,69 +1,129 @@
 import torch
+import torch.nn as nn
 
-class OneElementEulerIntegrator(torch.nn.Module):
-    def __init__(self, fx, h):
+
+class OneElementEulerIntegrator(nn.Module):
+    """
+    One-step forward Euler integrator for a single scalar output model fx.
+
+    This integrates a single element `xi` of the state using its associated
+    dynamics `dx_i = fx(X, u)`.
+
+    Parameters
+    ----------
+    fx : nn.Module
+        A model that computes dx_i = fx(X, u) with shape (B, 1), where:
+            - X : (B, nx) is the full state batch
+            - u : (B, nu) is the control input batch
+    h : float or torch.Tensor
+        Integration time step (scalar)
+    """
+    def __init__(self, fx: nn.Module, h: float | torch.Tensor):
         super().__init__()
-        self.fx = fx  # fx must be nn.Module with registered parameters
+        self.fx = fx
         self.h = h
 
-    def forward(self, X, xi, u):
-        dx_i = self.fx(X, u)  # shape: (batch, 1)
+    def forward(
+        self,
+        X: torch.Tensor,   # (B, nx)
+        xi: torch.Tensor,  # (B, 1)
+        u: torch.Tensor    # (B, nu)
+    ) -> torch.Tensor:
+        """
+        Perform one Euler step for a scalar state xi.
+
+        Returns
+        -------
+        xi_next : torch.Tensor
+            Next state value after one integration step (B, 1)
+        """
+        dx_i = self.fx(X, u)  # (B, 1)
         return xi + self.h * dx_i
 
 
-class FullStateEulerIntegrator(torch.nn.Module):
-    def __init__(self, fx_list, h):
+class FullStateEulerIntegrator(nn.Module):
+    """
+    One-step forward Euler integrator for full state x using per-dimension models.
+
+    Parameters
+    ----------
+    fx_list : list[nn.Module]
+        List of fx_i(x, u) → dx_i, one per state component (len = nx).
+    h : float or torch.Tensor
+        Integration time step (scalar)
+    """
+    def __init__(self, fx_list: list[nn.Module], h: float | torch.Tensor):
         super().__init__()
-        self.fx_list = fx_list  # fx must be nn.Module with registered parameters
+        self.fx_list = fx_list
         self.h = h
-    def forward(self, x, u):
+
+    def forward(
+        self,
+        x: torch.Tensor,  # (B, nx)
+        u: torch.Tensor   # (B, nu)
+    ) -> torch.Tensor:
+        """
+        Perform one Euler integration step over all state dimensions.
+
+        Returns
+        -------
+        x_next : torch.Tensor
+            Next state vector (B, nx)
+        """
         dx = torch.zeros_like(x)
         for idx, fx in enumerate(self.fx_list):
             dx[:, idx:idx + 1] = fx(x, u)
         return x + self.h * dx
 
 
-
-import torch.nn as nn
-
-
 class FullStateRK4Integrator(nn.Module):
     """
-    One-step 4th-order Runge–Kutta that evolves the *entire* state vector x
-    when you have **one scalar-output model per state component** in
-    `fx_list`.
+    One-step 4th-order Runge–Kutta integrator for full state vector.
 
-    Each fx_i must implement  f_i(x, u) → ẋ_i (shape: B×1).
+    Assumes one model per state dimension.
 
     Parameters
     ----------
-    fx_list : list[nn.Module]   – length = nx, one SINDy model per state
-    h       : float or 0-D tensor  – time step
+    fx_list : list[nn.Module]
+        List of fx_i(x, u) → dx_i (output shape: B×1), one per state dimension (len = nx).
+    h : float or torch.Tensor
+        Integration time step (scalar)
     """
-    def __init__(self, fx_list, h):
+    def __init__(self, fx_list: list[nn.Module], h: float | torch.Tensor):
         super().__init__()
         self.fx_list = nn.ModuleList(fx_list)
-        self.h       = torch.as_tensor(h)          # allows scalar or tensor
+        self.h = torch.as_tensor(h)
 
-    # ---- helper to evaluate all f_i ----------------------------------------
-    def _f(self, x, u):
-        """Return full derivative vector ẋ matching x’s shape."""
+    def _f(self, x: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
+        """
+        Evaluate all f_i(x, u) for the full state vector.
+
+        Returns
+        -------
+        dx : torch.Tensor
+            Time derivative vector dx/dt, shape (B, nx)
+        """
         dx = torch.empty_like(x)
         for i, fx in enumerate(self.fx_list):
-            dx[:, i:i+1] = fx(x, u)                # (B,1)
+            dx[:, i:i+1] = fx(x, u)
         return dx
 
-    # ---- RK4 step -----------------------------------------------------------
-    @torch.no_grad()
-    def forward(self, x, u):
+    def forward(
+        self,
+        x: torch.Tensor,  # (B, nx)
+        u: torch.Tensor   # (B, nu)
+    ) -> torch.Tensor:
         """
-        x : (B, nx)   – current state
-        u : (B, nu)   – control input
-        returns next state  x_{k+1}
+        Perform one Runge–Kutta step over the entire state vector.
+
+        Returns
+        -------
+        x_next : torch.Tensor
+            Next state vector (B, nx)
         """
         h = self.h
-        k1 = self._f(x, u)  # k1 = f(x_i, t_i)
-        k2 = self._f(x + h * k1 / 2.0, u)  # k2 = f(x_i + 0.5*h*k1, t_i + 0.5*h)
-        k3 = self._f(x + h * k2 / 2.0, u)  # k3 = f(x_i + 0.5*h*k2, t_i + 0.5*h)
-        k4 = self._f(x + h * k3, u)  # k4 = f(y_i + h*k3, t_i + h)
+        k1 = self._f(x, u)
+        k2 = self._f(x + h * k1 / 2.0, u)
+        k3 = self._f(x + h * k2 / 2.0, u)
+        k4 = self._f(x + h * k3, u)
         return x + h * (k1 / 6.0 + k2 / 3.0 + k3 / 3.0 + k4 / 6.0)

@@ -2,94 +2,85 @@ import torch
 from neuromancer.dynamics.ode import ODESystem
 from SparseDPC.sindy.library import FunctionLibrary
 
+
 class SINDy(ODESystem):
     """
-    Sparse Identification of Non-Linear Dynamics
+    Sparse Identification of Nonlinear Dynamics or Control Policy (SINDy)
+
+    This model can represent either:
+    - Dynamics:    dx/dt = Θ(x,u)·coef
+    - Policy:      u    = Θ(x,r)·coef
     """
 
     def __init__(
         self,
         library: FunctionLibrary,
         n_out: int | None = None,
-        main_idx: int     = 0,
+        main_idx: int = 0,
         policy_name: str | None = None,
-        seed: int | None  = None,
+        seed: int | None = None,
         device: torch.device = torch.device("cpu"),
     ):
         assert isinstance(library, FunctionLibrary), "`library` must be FunctionLibrary"
 
+        self.library = library
+        self.main_idx = main_idx
+        self.policy_name = policy_name
         self.n_out = n_out or library.n_features
+
         super().__init__(library.shape[1], self.n_out)
 
-        self.library     = library
-        self.main_idx    = main_idx
-        self.policy_name = policy_name
-
-        # ---------------------------------------------------------------
-        # reproducible initialisation
-        # ---------------------------------------------------------------
-        if seed is None:
-            gen = None                       # use global RNG
-        else:
-            gen = torch.Generator(device=device).manual_seed(seed)
-
+        gen = None if seed is None else torch.Generator(device=device).manual_seed(seed)
         init_coef = 0.5 * (2 * torch.rand(
-            (self.library.shape[0], self.n_out), generator=gen, device=device
+            (library.shape[0], self.n_out),
+            generator=gen,
+            device=device
         ) - 1)
 
         self.coef = torch.nn.Parameter(init_coef, requires_grad=True)
         self.float()
-        self.main_idx = main_idx
-        self.policy_name = policy_name
 
-    def ode_equations(self, x, u=None):
+    def ode_equations(
+        self,
+        x: torch.Tensor,
+        u: torch.Tensor | None = None
+    ) -> torch.Tensor:
         """
-        Compute the time derivative of state variables using SINDy equations.
+        Evaluate model output as Θ(x,u)·coef.
 
-        :param x: (torch.tensor) Current state values
-        :param u: (torch.tensor) Control input (optional)
+        Interpreted as dx/dt or u depending on context.
         """
-        # Move tensors to the same device
-        device = self.coef.device  # Get device of trainable parameters
-        x = x.to(device)
+        x = x.to(self.coef.device)
         if u is not None:
-            u = u.to(device)
+            u = u.to(self.coef.device)
 
-        if u is None:
-            lib_eval = self.library.evaluate(x)
-        else:
-            lib_eval = self.library.evaluate(x, u)
+        lib_eval = self.library.evaluate(x, u)
+        return lib_eval @ self.coef
 
-        # Compute dx/dt
-        output = torch.matmul(lib_eval, self.coef)
-        return output
-
-
-    def __str__(self):
+    def set_parameters(self, new_params: torch.nn.Parameter):
         """
-        return: (str) a list of the linear combinations of candidate functions for each state variable
+        Replace trainable coefficients.
         """
-        f_names = self.library.__str__()
-        f_names = f_names.split(", ")
-        return_str = ""
-
-        for i in range(self.nx):
-            if self.policy_name is None:
-                return_str += f"dx{self.main_idx}/dt = "
-            else:
-                return_str += f"{self.policy_name} = "
-            for j in range(len(f_names)):
-                coef = self.coef[j, i]
-                func = f_names[j]
-                return_str += f"{coef:.3f}*{func} + "
-            return_str = return_str[:-2]
-            return_str += "\n"
-
-        return return_str
-
-    def set_parameters(self, new_params):
-        assert self.coef.shape == new_params.shape, "New parameters must have same shape"
-        assert isinstance(new_params, torch.nn.Parameter), "Must be torch.nn.Parameter"
-        assert new_params.requires_grad, "Must require gradients"
+        assert isinstance(new_params, torch.nn.Parameter), "Expected nn.Parameter"
+        assert new_params.requires_grad, "Parameter must require gradients"
+        assert new_params.shape == self.coef.shape, "Shape mismatch"
 
         self.coef = new_params
+
+    def __str__(self) -> str:
+        """
+        Pretty-print symbolic representation of model.
+
+        Format:
+        - If policy_name: policy_name = ...
+        - Else: dx/dt = ...
+        """
+        names = self.library.function_names or [f"f{i}" for i in range(self.library.shape[0])]
+        out = ""
+
+        for i in range(self.nx):
+            lhs = f"{self.policy_name}" if self.policy_name else f"dx{self.main_idx}/dt"
+            terms = [f"{self.coef[j, i]:.3f}*{names[j]}" for j in range(len(names))]
+            out += f"{lhs} = {' + '.join(terms)}\n"
+
+        return out
