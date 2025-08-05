@@ -1,6 +1,6 @@
 import torch
 from neuromancer.dynamics.ode import ODESystem
-from SparseDPC.src.sindy.library import FunctionLibrary
+from SparseDPC.sindy.library import FunctionLibrary
 
 class SINDy(ODESystem):
     """

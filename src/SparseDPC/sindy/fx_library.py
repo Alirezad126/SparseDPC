@@ -1,7 +1,7 @@
 # fx_library.py
 import torch
-from SparseDPC.src.sindy.library import FunctionLibrary
-from SparseDPC.src.sindy.sindy import SINDy
+from SparseDPC.sindy.library import FunctionLibrary
+from SparseDPC.sindy.sindy import SINDy
 
 
 # fx_library.py  ────────────────────────────────────────────────────────────
