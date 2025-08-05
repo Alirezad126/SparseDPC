@@ -188,3 +188,5 @@ def fx_policy_library(nx: int, nref: int, policy_name: str, seed: int, device: t
     theta_library = FunctionLibrary(theta_funs, 1, nref, theta_names)
     # Return the SINDy model
     return SINDy(library=theta_library, policy_name=policy_name, seed=seed, device=device)
+
+

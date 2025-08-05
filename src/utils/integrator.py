@@ -63,7 +63,7 @@ class FullStateRK4Integrator(nn.Module):
         """
         h = self.h
         k1 = self._f(x, u)  # k1 = f(x_i, t_i)
-        k2 = self.block(x + h * k1 / 2.0, u)  # k2 = f(x_i + 0.5*h*k1, t_i + 0.5*h)
-        k3 = self.block(x + h * k2 / 2.0, u)  # k3 = f(x_i + 0.5*h*k2, t_i + 0.5*h)
-        k4 = self.block(x + h * k3, u)  # k4 = f(y_i + h*k3, t_i + h)
+        k2 = self._f(x + h * k1 / 2.0, u)  # k2 = f(x_i + 0.5*h*k1, t_i + 0.5*h)
+        k3 = self._f(x + h * k2 / 2.0, u)  # k3 = f(x_i + 0.5*h*k2, t_i + 0.5*h)
+        k4 = self._f(x + h * k3, u)  # k4 = f(y_i + h*k3, t_i + h)
         return x + h * (k1 / 6.0 + k2 / 3.0 + k3 / 3.0 + k4 / 6.0)
