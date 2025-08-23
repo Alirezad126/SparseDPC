@@ -74,7 +74,7 @@ class SparseTrainer:
                  threshold: float = 1e-3,
                  prune_every: int = 5,
                  threshold_mult: float = 1.07,
-                 prune_noise: float = 0.1):
+                 prune_noise: float = 0.05):
 
         self.model = problem
         self.fx_models = list(fx_models)

@@ -31,11 +31,10 @@ class SINDy(ODESystem):
         super().__init__(library.shape[1], self.n_out)
 
         gen = None if seed is None else torch.Generator(device=device).manual_seed(seed)
-        init_coef = 0.5 * (2 * torch.rand(
+        init_coef = torch.empty(
             (library.shape[0], self.n_out),
-            generator=gen,
             device=device
-        ) - 1)
+        ).uniform_(-0.05, 0.05, generator=gen)
 
         self.coef = torch.nn.Parameter(init_coef, requires_grad=True)
         self.float()

@@ -77,12 +77,19 @@ def get_data(
     return train_loader, dev_loader, test_dict
 
 
+from typing import Optional, Tuple
+import torch
+from torch.utils.data import DataLoader
+from neuromancer.dataset import DictDataset  # Adjust import as needed
+
 def get_policy_data(
     nsteps: int,
     n_samples: int,
     nx: int,
     device: torch.device,
     *,
+    xmin: float = -1.0,
+    xmax: float = 1.0,
     same_ref_for_all_states: bool = True,
     zero_refs: bool = False,
     batch_size: int = 200,
@@ -96,6 +103,8 @@ def get_policy_data(
         n_samples: Number of samples
         nx: Number of states
         device: CUDA or CPU device
+        xmin: Minimum bound for state initialization
+        xmax: Maximum bound for state initialization
         same_ref_for_all_states: Use same reference for all states
         zero_refs: All reference levels zero if True
         batch_size: DataLoader batch size
@@ -104,7 +113,6 @@ def get_policy_data(
     Returns:
         train_loader, dev_loader
     """
-
     if seed is None:
         gen_train = gen_dev = None
     else:
@@ -124,8 +132,9 @@ def get_policy_data(
             ref = levels.repeat(1, nsteps + 1, 1)
 
         xn = torch.rand(n_samples, 1, nx, device=device, generator=gen)
+        xn = xn * (xmax - xmin) + xmin
 
-        d: Dict[str, torch.Tensor] = {'xn': xn, 'r': ref}
+        d = {'xn': xn, 'r': ref}
         for i in range(nx):
             d[f"x{i}_n"] = xn[:, :, i:i+1]
             d[f"r{i}"] = ref[:, :, i:i+1]
