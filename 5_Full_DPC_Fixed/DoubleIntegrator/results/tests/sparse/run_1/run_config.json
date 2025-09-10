@@ -1,0 +1,16 @@
+{
+    "l1_coef": 0.0002,
+    "Q_con_obs": 100.0,
+    "Q_con_x": 10.0,
+    "Q_con_u": 10.0,
+    "Q_u": 0.05,
+    "Q_r": 2.0,
+    "Q_dx": 0.0,
+    "Q_du": 0.0001,
+    "lr": 0.002,
+    "epochs": 9999,
+    "threshold": 0.08,
+    "prune_every": 1000,
+    "threshold_mult": 1.15,
+    "prune_noise": 0.02
+}
