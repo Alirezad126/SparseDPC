@@ -302,9 +302,16 @@ class SparsePolicyBuilder2D:
             name="policy_combined"
         )
 
+        u_at_ref_node = Node(
+            # clamp optional; drop it if you want the *raw* policy output
+            lambda r: torch.clamp(self.policy(torch.stack((r, torch.zeros_like(r)), dim=-1).flatten(-2), r), umin, umax),
+            ['r'], ['u_f'],
+            name='policy_at_ref_rr'
+        )
+
         integrator = integrators.Euler(dynamics_model, h=ts)
         integrator_node = Node(integrator, ['xn', 'u'], [f'xn'], name="x_integrator")
-        self.system = System([policy_node, integrator_node], nsteps=nsteps)
+        self.system = System([policy_node, integrator_node, u_at_ref_node], nsteps=nsteps)
 
     def _build_problem(self, bounds, cfg, obstacle_cfg, refstep):
 
@@ -322,7 +329,7 @@ class SparsePolicyBuilder2D:
         # losses
         action_loss       = cfg["Q_u"]  * ((u == 0.0)          ^ 2)   # control penalty
         reference_loss_position    = cfg["Q_r"]  * ((ref[:, -refstep:, :]==x_pos[:, -refstep:, :])    ^ 2)   # track [x,y]
-        reference_loss_velocity    = cfg["Q_r"]/2  * ((x_vel[:, -1:, :] == 0.0)    ^ 2)
+        reference_loss_velocity    = cfg["Q_v"]  * ((x_vel[:, -1:, :] == 0.0)    ^ 2)
         state_smoothing   = cfg["Q_dx"] * ((x[:, 1:, :] == x[:, :-1, :] ) ^ 2)   # Δx penalty
         control_smoothing = cfg["Q_du"] * ((u[:, 1:, :] == u[:, :-1, :] ) ^ 2)   # Δu penalty
 
@@ -332,7 +339,20 @@ class SparsePolicyBuilder2D:
         l1_pen = cfg["l1_coef"] * (l1_policy == 0)
         l1_pen.name = f"loss_l1_policy"
 
-        objectives = [reference_loss_position, reference_loss_velocity, action_loss, state_smoothing, control_smoothing]
+        # terminal u == 0 (always penalize last control effort)
+        u_t = variable('u')[:, -1:, :]  # (1, B, nu)
+        action_final = cfg["Q_uf"] * ((u_t == 0.0) ^ 2)
+        action_final.name = "action_final"
+
+        u_f = variable('u_f')[:, -1:, :]  # (1, B, nu)
+        u_at_r = cfg["Q_uf"] * ((u_f == 0.0) ^ 2)
+        u_at_r.name = "u_at_r"
+
+        # include in objectives
+        objectives = [
+            reference_loss_position, reference_loss_velocity, action_loss,
+            state_smoothing, control_smoothing, action_final, u_at_r
+        ]
 
         for n, nm in zip(objectives,
                          ["reference_loss_position", "reference_loss_velocity", "action_loss", "state_smoothing", "control_smoothing"]):

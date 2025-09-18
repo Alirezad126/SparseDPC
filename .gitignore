@@ -161,6 +161,6 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-5_Full_DPC_Fixed/TwoTank/results
-5_Full_DPC_Fixed/VanDerPol/results
+#5_Full_DPC_Fixed/TwoTank/results
+#5_Full_DPC_Fixed/VanDerPol/results
 .DS_Store

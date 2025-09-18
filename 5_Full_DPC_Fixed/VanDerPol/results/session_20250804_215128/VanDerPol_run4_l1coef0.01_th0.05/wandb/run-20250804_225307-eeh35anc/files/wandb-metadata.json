@@ -1,0 +1,43 @@
+{
+  "os": "macOS-14.2.1-arm64-arm-64bit",
+  "python": "CPython 3.10.13",
+  "startedAt": "2025-08-05T02:53:07.304152Z",
+  "program": "SparseDPC/5_Full_DPC_Fixed/VanDerPol/VanDerPol.ipynb",
+  "git": {
+    "remote": "git@github.com:Alirezad126/SparseDPC.git",
+    "commit": "6194d0771742d4d3255e5012e0e9ea1b760dd85b"
+  },
+  "email": "alirezad126@gmail.com",
+  "root": "results/session_20250804_215128/VanDerPol_run4_l1coef0.01_th0.05",
+  "host": "Alis-Air",
+  "username": "alireza",
+  "executable": "/opt/anaconda3/envs/neuromancer/bin/python",
+  "cpu_count": 8,
+  "cpu_count_logical": 8,
+  "disk": {
+    "/": {
+      "total": "245107195904",
+      "used": "226222735360"
+    },
+    "/System/Volumes/Data": {
+      "total": "245107195904",
+      "used": "226222735360"
+    }
+  },
+  "memory": {
+    "total": "8589934592"
+  },
+  "cpu": {
+    "count": 8,
+    "countLogical": 8
+  },
+  "apple": {
+    "name": "Apple M1",
+    "ecpuCores": 4,
+    "pcpuCores": 4,
+    "gpuCores": 7,
+    "memoryGb": 8,
+    "swapTotalBytes": "4294967296",
+    "ramTotalBytes": "8589934592"
+  }
+}

@@ -1,0 +1,12 @@
+{
+    "layers": [
+        32,
+        32
+    ],
+    "reg_coef": 20.0,
+    "const_coef": 20.0,
+    "lr": 0.005,
+    "epochs": 1000,
+    "warmup": 1000,
+    "patience": 400
+}

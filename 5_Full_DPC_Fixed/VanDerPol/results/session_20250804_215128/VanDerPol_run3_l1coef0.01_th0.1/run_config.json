@@ -1,0 +1,11 @@
+{
+    "reg_coef": 100.0,
+    "l1_coef": 0.01,
+    "const_coef": 10.0,
+    "lr": 0.005,
+    "epochs": 2499,
+    "threshold": 0.1,
+    "prune_every": 250,
+    "threshold_mult": 1.1,
+    "run_id": 3
+}
