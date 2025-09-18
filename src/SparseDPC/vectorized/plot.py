@@ -17,6 +17,15 @@ def _rect_corners_to_llwh(rect):
     ymin, ymax = min(y1, y2), max(y1, y2)
     return (xmin, ymin, xmax - xmin, ymax - ymin), (xmin, xmax, ymin, ymax)
 
+import numpy as np
+import torch
+import matplotlib.pyplot as plt
+from matplotlib.patches import Ellipse, Rectangle
+from typing import Dict, Tuple
+
+# --------------------------------------------
+# 1) plot_training_sample_with_ellipse(..., theta=...)
+# --------------------------------------------
 def plot_training_sample_with_ellipse(
     loader,
     sample_idx: int = 0,
@@ -26,10 +35,11 @@ def plot_training_sample_with_ellipse(
     b: float | None = None,
     c: float | None = None,
     d: float | None = None,
-    title: str = "Training sample: init vs. reference with ellipse obstacle",
-    init_rect=None,           # ((x1,y1),(x2,y2)) start sampling region
-    ref_rect=None,            # ((x1,y1),(x2,y2)) reference sampling region
-    xmin=-1., xmax=1.         # plot limits (square)
+    theta: float | None = None,   # NEW: tilt angle [rad]
+    title: str = "Training sample: init vs. reference with rotated ellipse obstacle",
+    init_rect=None,               # ((x1,y1),(x2,y2)) start sampling region
+    ref_rect=None,                # ((x1,y1),(x2,y2)) reference sampling region
+    xmin=-1., xmax=1.             # plot limits (square)
 ):
     # get one batch
     batch = next(iter(loader))
@@ -46,9 +56,10 @@ def plot_training_sample_with_ellipse(
     b_ = get_param("obs_b", b)
     c_ = get_param("obs_c", c)
     d_ = get_param("obs_d", d)
+    theta = get_param("obs_theta", theta)  # NEW: read tilt if present
 
-    if None in (p, b_, c_, d_):
-        raise ValueError("Ellipse params p,b,c,d must be provided or present in the batch as obs_*.")
+    if any(v is None for v in (p, b_, c_, d_, theta)):
+        raise ValueError("Ellipse params p,b,c,d,theta must be provided or present in the batch as obs_*.")
 
     # extract initial (single) and reference (assumed constant across horizon for xy)
     x_i = float(xn[sample_idx, 0, pos_idx[0]])
@@ -69,13 +80,16 @@ def plot_training_sample_with_ellipse(
     ax.scatter([x_r], [y_r], marker="*", s=80, label="ref")
     ax.plot([x_i, x_r], [y_i, y_r], linestyle="--", linewidth=1.0, alpha=0.6, label="init→ref")
 
-    # draw keep-out ellipse (filled + outline)
-    ell_fill = Ellipse((c_, d_), width=2*a_x, height=2*a_y, alpha=0.25, color="purple")
+    # draw keep-out ellipse (filled + outline) with tilt
+    theta_deg = np.degrees(theta)
+    ell_fill = Ellipse((c_, d_), width=2*a_x, height=2*a_y, angle=theta_deg,
+                       alpha=0.25, color="purple")
     ax.add_patch(ell_fill)
-    ell_edge = Ellipse((c_, d_), width=2*a_x, height=2*a_y, fill=False, linewidth=1.5, label="obstacle")
+    ell_edge = Ellipse((c_, d_), width=2*a_x, height=2*a_y, angle=theta_deg,
+                       fill=False, linewidth=1.5, label="obstacle")
     ax.add_patch(ell_edge)
 
-    # --- NEW: sampling rectangles ---
+    # --- sampling rectangles (unchanged) ---
     if init_rect is not None:
         (rx, ry, rw, rh), _ = _rect_corners_to_llwh(init_rect)
         ax.add_patch(Rectangle((rx, ry), rw, rh, fill=True, alpha=0.10, color="blue"))
@@ -100,12 +114,16 @@ def plot_training_sample_with_ellipse(
     return fig, ax
 
 
+# --------------------------------------------
+# 2) make_test_sample(..., ellipse={..., "theta": ...})
+#    Samples points OUTSIDE a rotated ellipse
+# --------------------------------------------
 def make_test_sample(
     *,
     nx: int,
     nsteps: int,
     device: torch.device,
-    ellipse: Dict[str, float],     # {"p":..., "b":..., "c":..., "d":...}
+    ellipse: Dict[str, float],     # {"p":..., "b":..., "c":..., "d":..., "theta": ...}
     seed: int = 7,
     init_vel_std: float = 0.0,     # e.g., 0.05 for a bit of initial motion
     # Rectangles: ((x_min, y_min), (x_max, y_max))
@@ -115,8 +133,8 @@ def make_test_sample(
     """
     Returns a dict for closed-loop rollouts:
         data = {"xn": (1,1,nx), "r": (1,nsteps+1,2)}
-    - (x,y) for the initial state is sampled UNIFORMLY within init_rect, but OUTSIDE the ellipse.
-    - Reference (x_ref,y_ref) is sampled UNIFORMLY within ref_rect, also OUTSIDE the ellipse,
+    - (x,y) for the initial state is sampled UNIFORMLY within init_rect, but OUTSIDE the rotated ellipse.
+    - Reference (x_ref,y_ref) is sampled UNIFORMLY within ref_rect, also OUTSIDE the rotated ellipse,
       and repeated across time.
     - No margins or extra clearance.
     """
@@ -126,11 +144,30 @@ def make_test_sample(
     # Ellipse parameters
     p = float(ellipse["p"]); b = float(ellipse["b"])
     c = float(ellipse["c"]); d = float(ellipse["d"])
+    theta = float(ellipse["theta"])   # NEW
     assert b > 0.0 and p >= 0.0
 
-    def outside_ellipse_np(x: np.ndarray, y: np.ndarray) -> np.ndarray:
-        # True if (x,y) is OUTSIDE the ellipse b(x-c)^2 + (y-d)^2 = (p/2)^2
-        return (b * (x - c) ** 2 + (y - d) ** 2) >= (0.5 * p) ** 2
+    # Semi-axes of the *unrotated* ellipse that corresponds to b(x-c)^2 + (y-d)^2 = (p/2)^2
+    a = 0.5 * p / np.sqrt(b)   # along x' (pre-rotation)
+    bs = 0.5 * p               # along y' (pre-rotation)
+    inv_a2  = 1.0 / (a*a)
+    inv_bs2 = 1.0 / (bs*bs)
+
+    ct, st = np.cos(theta), np.sin(theta)
+
+    def outside_ellipse_rot_np(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+        """
+        True if (x,y) is OUTSIDE the rotated ellipse with center (c,d),
+        semi-axes (a, bs) and angle theta (CCW).
+        """
+        # shift
+        X = x - c
+        Y = y - d
+        # rotate coords by -theta
+        xr =  ct * X + st * Y
+        yr = -st * X + ct * Y
+        val = (xr**2) * inv_a2 + (yr**2) * inv_bs2
+        return val >= 1.0
 
     def _ordered_rect(rect: Tuple[Tuple[float, float], Tuple[float, float]]):
         (x0, y0), (x1, y1) = rect
@@ -149,18 +186,17 @@ def make_test_sample(
             m = min(block, max_tries - tries)
             xs = rng.uniform(x0, x1, size=m)
             ys = rng.uniform(y0, y1, size=m)
-            keep = outside_ellipse_np(xs, ys)
+            keep = outside_ellipse_rot_np(xs, ys)
             if np.any(keep):
-                # take the first valid point
                 idx = np.nonzero(keep)[0][0]
                 return float(xs[idx]), float(ys[idx])
             tries += m
         raise RuntimeError(
-            "Could not sample a valid (x,y) outside the ellipse within the given rectangle. "
+            "Could not sample a valid (x,y) outside the rotated ellipse within the given rectangle. "
             "Adjust the rectangle or ellipse parameters."
         )
 
-    # --- Initial state (x,y) sampled in init_rect but OUTSIDE ellipse ---
+    # --- Initial state (x,y) sampled in init_rect but OUTSIDE rotated ellipse ---
     x0, y0 = sample_xy_in_rect_outside(init_rect)
     xn = torch.zeros((1, 1, nx), dtype=torch.float32, device=device)
     # positions (assumes indices 0 and 2 are x,y)
@@ -173,7 +209,7 @@ def make_test_sample(
     if nx >= 4 and init_vel_std > 0:
         xn[:, :, 3] = torch.randn(1, 1, device=device) * init_vel_std
 
-    # --- Constant reference (x_ref,y_ref) sampled in ref_rect but OUTSIDE ellipse ---
+    # --- Constant reference (x_ref,y_ref) sampled in ref_rect but OUTSIDE rotated ellipse ---
     xr, yr = sample_xy_in_rect_outside(ref_rect)
     r = torch.zeros((1, nsteps + 1, 2), dtype=torch.float32, device=device)
     r[:, :, 0] = xr
@@ -182,8 +218,9 @@ def make_test_sample(
     return {"xn": xn, "r": r}
 
 
-
-
+# --------------------------------------------
+# 3) plot_trajectories_with_ellipse(..., theta=...)
+# --------------------------------------------
 def plot_trajectories_with_ellipse(
     traj_list: list[dict],
     r: torch.Tensor | np.ndarray,
@@ -192,14 +229,15 @@ def plot_trajectories_with_ellipse(
     b: float,
     c: float,
     d: float,
+    theta: float = 0.0,          # NEW: tilt angle [rad]
     batch_idx: int = 0,
     xmin: float = -1.0,
     xmax: float = 1.0,
-    title: str = "Closed-loop trajectories with keep-out ellipse",
+    title: str = "Closed-loop trajectories with rotated keep-out ellipse",
     show_ref_path: bool = True,
 ):
     """
-    Plots XY paths from multiple simulated trajectories plus the keep-out ellipse.
+    Plots XY paths from multiple simulated trajectories plus the rotated keep-out ellipse.
 
     Parameters
     ----------
@@ -212,9 +250,17 @@ def plot_trajectories_with_ellipse(
           - "linestyle": e.g. "-", "--"
           - "alpha": float
     r : (B, T, 2) reference positions over time
-    p, b, c, d : ellipse parameters
+    p, b, c, d : ellipse parameters for b(x-c)^2 + (y-d)^2 = (p/2)^2
+    theta : rotation angle in radians (CCW)
     batch_idx : which batch index to plot
     """
+
+    plt.rcParams.update({
+        "text.usetex": True,
+        "font.family": "serif",
+        "font.serif": ["Computer Modern Roman"],
+        "text.latex.preamble": r"\usepackage{amsmath}",
+    })
 
     # convert reference to numpy
     if isinstance(r, torch.Tensor):
@@ -248,21 +294,22 @@ def plot_trajectories_with_ellipse(
 
         ax.plot(xs, ys, lw=1.5, color=color, linestyle=linestyle,
                 alpha=alpha, label=label)
-
         ax.scatter([xs[-1]], [ys[-1]], c=color, marker="*", s=120)
+
+    # mark a start point (from the last trajectory plotted)
     ax.scatter([xs[0]], [ys[0]], c="green", marker="x", s=80, label="start point")
+
     # optional reference path
     if show_ref_path:
-        ax.scatter([xr[-1]], [yr[-1]], c="purple", marker="o", s=60,
-                   label="reference")
+        ax.scatter([xr[-1]], [yr[-1]], c="purple", marker="o", s=60, label="reference")
 
-    # ellipse (fill + edge)
-    ell_fill = Ellipse((c, d), width=2 * a_x, height=2 * a_y,
+    # rotated ellipse (fill + edge)
+    theta_deg = np.degrees(theta)
+    ell_fill = Ellipse((c, d), width=2 * a_x, height=2 * a_y, angle=theta_deg,
                        facecolor="tab:purple", edgecolor="none", alpha=0.5)
     ax.add_patch(ell_fill)
-    ell_edge = Ellipse((c, d), width=2 * a_x, height=2 * a_y,
-                       fill=False, edgecolor="tab:purple", lw=1, alpha=0.6,
-                       label="obstacle")
+    ell_edge = Ellipse((c, d), width=2 * a_x, height=2 * a_y, angle=theta_deg,
+                       fill=False, edgecolor="tab:purple", lw=1, alpha=0.6, label="obstacle")
     ax.add_patch(ell_edge)
 
     ax.set_title(title)
@@ -277,4 +324,3 @@ def plot_trajectories_with_ellipse(
     ax.legend(loc="best")
     plt.show()
     return fig, ax
-

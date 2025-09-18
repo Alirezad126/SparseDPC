@@ -11,7 +11,7 @@ from neuromancer.loss import PenaltyLoss
 from neuromancer.problem import Problem
 from neuromancer.dynamics import ode, integrators
 
-from sindy import *
+from SparseDPC.vectorized.sindy import *
 import importlib
 import SparseDPC.trainer.problem
 import SparseDPC.sindy.sindy
