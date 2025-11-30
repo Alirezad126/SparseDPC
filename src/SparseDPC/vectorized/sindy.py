@@ -20,6 +20,9 @@ class LibraryPlan:
     xu_sel: Optional[torch.Tensor]
     fourier_sin_sel: Optional[torch.Tensor]
     fourier_cos_sel: Optional[torch.Tensor]
+    # NEW: Fourier on reference (policy) inputs
+    fourier_sin_r_sel: Optional[torch.Tensor]
+    fourier_cos_r_sel: Optional[torch.Tensor]
     global2local: torch.Tensor
 
 
@@ -40,7 +43,7 @@ class CompiledFunctionLibrary:
                  add_u_prod: bool = True,
                  add_fourier: bool = False,
                  max_freq: int = 1,
-                 is_policy: bool = False):                     # NEW
+                 is_policy: bool = False):
         self.n_features = n_features
         self.n_control = n_control
         self.include_bias = include_bias
@@ -50,7 +53,7 @@ class CompiledFunctionLibrary:
         self.add_u_prod = add_u_prod
         self.add_fourier = add_fourier
         self.max_freq = max_freq
-        self.is_policy = is_policy                            # NEW
+        self.is_policy = is_policy
 
         # ----- build static layout (offsets) once -----
         self.offsets: Dict[str, Tuple[int, int]] = {}
@@ -86,8 +89,13 @@ class CompiledFunctionLibrary:
 
         if add_fourier and max_freq >= 1:
             self._freqs = torch.arange(1, max_freq+1).long()
+            # Fourier on states x
             self.offsets["fourier_sin"] = (start, start + n_features*max_freq); start += n_features*max_freq
             self.offsets["fourier_cos"] = (start, start + n_features*max_freq); start += n_features*max_freq
+            # NEW: Fourier on reference inputs r (only when used as policy inputs)
+            if is_policy and n_control > 0:
+                self.offsets["fourier_sin_r"] = (start, start + n_control*max_freq); start += n_control*max_freq
+                self.offsets["fourier_cos_r"] = (start, start + n_control*max_freq); start += n_control*max_freq
 
         # Total shape (n_terms, nx+nu)
         self.shape = (start, n_features + n_control)
@@ -97,16 +105,8 @@ class CompiledFunctionLibrary:
 
     # ---------- helper to (re)build names ----------
     def _build_names(self) -> List[str]:
-        ctrl = "r" if self.is_policy else "u"               # NEW
+        ctrl = "r" if self.is_policy else "u"
         names: List[str] = []
-        s = 0
-
-        def add_range(label: str, count: int, fmt):
-            nonlocal s
-            a, b = s, s + count
-            self.offsets[label] = (a, b)
-            s = b
-            names.extend(fmt(i) for i in range(count))
 
         # Respect existing offsets; only generate textual names
         if "bias" in self.offsets:
@@ -119,7 +119,7 @@ class CompiledFunctionLibrary:
         # linear controls
         if "u" in self.offsets:
             nu = self.n_control
-            names.extend([f"{ctrl}{j}" for j in range(nu)])  # NEW label
+            names.extend([f"{ctrl}{j}" for j in range(nu)])  # label is 'r' if policy
 
         # sqrt(x)
         if "sqrt_x" in self.offsets:
@@ -136,15 +136,15 @@ class CompiledFunctionLibrary:
         # uu
         if self._uu_pairs is not None:
             for p, q in zip(self._uu_pairs[0].tolist(), self._uu_pairs[1].tolist()):
-                names.append(f"{ctrl}{p}*{ctrl}{q}")         # NEW label
+                names.append(f"{ctrl}{p}*{ctrl}{q}")
 
         # xu
         if "xu" in self.offsets:
             for i in range(nx):
                 for j in range(self.n_control):
-                    names.append(f"x{i}*{ctrl}{j}")          # NEW label
+                    names.append(f"x{i}*{ctrl}{j}")
 
-        # fourier
+        # fourier on x
         if "fourier_sin" in self.offsets:
             K = (self.offsets["fourier_sin"][1] - self.offsets["fourier_sin"][0]) // nx
             for i in range(nx):
@@ -156,6 +156,20 @@ class CompiledFunctionLibrary:
                 for k in range(1, K+1):
                     names.append(f"cos({k}·x{i})")
 
+        # NEW: fourier on reference inputs r (policy naming)
+        if "fourier_sin_r" in self.offsets:
+            nu = self.n_control
+            K = (self.offsets["fourier_sin_r"][1] - self.offsets["fourier_sin_r"][0]) // nu
+            for j in range(nu):
+                for k in range(1, K+1):
+                    names.append(f"sin({k}·{ctrl}{j})")
+        if "fourier_cos_r" in self.offsets:
+            nu = self.n_control
+            K = (self.offsets["fourier_cos_r"][1] - self.offsets["fourier_cos_r"][0]) // nu
+            for j in range(nu):
+                for k in range(1, K+1):
+                    names.append(f"cos({k}·{ctrl}{j})")
+
         assert len(names) == self.shape[0]
         return names
 
@@ -164,7 +178,7 @@ class CompiledFunctionLibrary:
         self.is_policy = bool(is_policy)
         self.function_names = self._build_names()
 
-    # ---- compile & evaluate (unchanged logic) ----
+    # ---- compile & evaluate ----
     def compile(self, subset_global: Optional[Sequence[int]] = None, device: Optional[torch.device] = None) -> LibraryPlan:
         n_terms = self.shape[0]
         if subset_global is None:
@@ -183,6 +197,8 @@ class CompiledFunctionLibrary:
         x_idx = u_idx = sqrt_x_idx = None
         poly_sel: Dict[int, torch.Tensor] = {}
         uu_pairs_sel = xu_sel = fourier_sin_sel = fourier_cos_sel = None
+        # NEW:
+        fourier_sin_r_sel = fourier_cos_r_sel = None
 
         if "bias" in self.offsets:
             mask_bias, _ = in_range(self.offsets["bias"])
@@ -238,6 +254,25 @@ class CompiledFunctionLibrary:
                 k_idx0 = idx_fc %  K
                 fourier_cos_sel = torch.stack([i_idx, k_idx0], dim=0)
 
+        # NEW: reference Fourier selectors
+        if "fourier_sin_r" in self.offsets:
+            s,e = self.offsets["fourier_sin_r"]
+            mask_fsr, idx_fsr = in_range((s,e))
+            if mask_fsr.any():
+                nu, K = self.n_control, (e - s) // self.n_control
+                j_idx = idx_fsr // K
+                k_idx0 = idx_fsr %  K
+                fourier_sin_r_sel = torch.stack([j_idx, k_idx0], dim=0)
+
+        if "fourier_cos_r" in self.offsets:
+            s,e = self.offsets["fourier_cos_r"]
+            mask_fcr, idx_fcr = in_range((s,e))
+            if mask_fcr.any():
+                nu, K = self.n_control, (e - s) // self.n_control
+                j_idx = idx_fcr // K
+                k_idx0 = idx_fcr %  K
+                fourier_cos_r_sel = torch.stack([j_idx, k_idx0], dim=0)
+
         g2l = torch.full((self.shape[0],), -1, dtype=torch.long, device=subset.device)
         g2l[subset] = torch.arange(subset.numel(), device=subset.device)
 
@@ -253,6 +288,8 @@ class CompiledFunctionLibrary:
             xu_sel=xu_sel,
             fourier_sin_sel=fourier_sin_sel,
             fourier_cos_sel=fourier_cos_sel,
+            fourier_sin_r_sel=fourier_sin_r_sel,
+            fourier_cos_r_sel=fourier_cos_r_sel,
             global2local=g2l
         )
 
@@ -281,6 +318,15 @@ class CompiledFunctionLibrary:
             i_idx = plan.fourier_cos_sel[0].to(device); k_idx0 = plan.fourier_cos_sel[1].to(device)
             freqs = (k_idx0 + 1).to(x.dtype).view(1, -1)
             outs.append(torch.cos(x[:, i_idx] * freqs))
+        # NEW: Fourier on reference inputs
+        if plan.fourier_sin_r_sel is not None:
+            j_idx = plan.fourier_sin_r_sel[0].to(device); k_idx0 = plan.fourier_sin_r_sel[1].to(device)
+            freqs = (k_idx0 + 1).to(x.dtype).view(1, -1)
+            outs.append(torch.sin(u[:, j_idx] * freqs))
+        if plan.fourier_cos_r_sel is not None:
+            j_idx = plan.fourier_cos_r_sel[0].to(device); k_idx0 = plan.fourier_cos_r_sel[1].to(device)
+            freqs = (k_idx0 + 1).to(x.dtype).view(1, -1)
+            outs.append(torch.cos(u[:, j_idx] * freqs))
         return torch.cat(outs, dim=1) if outs else torch.empty(B, 0, device=device)
 
     def evaluate(self, x: torch.Tensor, u: Optional[torch.Tensor]) -> torch.Tensor:

@@ -2,6 +2,7 @@ from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
+from neuromancer.modules import blocks
 from neuromancer.loggers import BasicLogger
 from neuromancer.problem import Problem
 from neuromancer.callbacks import Callback
@@ -10,6 +11,7 @@ from neuromancer.constraint import variable
 from neuromancer.loss import PenaltyLoss
 from neuromancer.problem import Problem
 from neuromancer.dynamics import ode, integrators
+from neuromancer.trainer import Trainer
 
 from SparseDPC.vectorized.sindy import *
 import importlib
@@ -304,13 +306,12 @@ class SparsePolicyBuilder2D:
 
         u_at_ref_node = Node(
             # clamp optional; drop it if you want the *raw* policy output
-            lambda r: torch.clamp(self.policy(torch.stack((r, torch.zeros_like(r)), dim=-1).flatten(-2), r), umin, umax),
+            lambda r: torch.clamp(self.policy(r, r), umin, umax),
             ['r'], ['u_f'],
             name='policy_at_ref_rr'
         )
 
-        integrator = integrators.Euler(dynamics_model, h=ts)
-        integrator_node = Node(integrator, ['xn', 'u'], [f'xn'], name="x_integrator")
+        integrator_node = Node(dynamics_model, ['xn', 'u'], [f'xn'], name="x_integrator")
         self.system = System([policy_node, integrator_node, u_at_ref_node], nsteps=nsteps)
 
     def _build_problem(self, bounds, cfg, obstacle_cfg, refstep):
@@ -321,15 +322,13 @@ class SparsePolicyBuilder2D:
         ref = variable('r')         # references, shape: (T, B, 2)  -> [x_ref, y_ref]
 
         # select positions from state to compare against ref
-        x_pos = x[:, :, [0, 2]]
-        x_vel = x[:, :, [1, 3]]
+        x_pos = x
         x1 = variable('xn')[:, :, [0]]
-        x2 = variable('xn')[:, :, [2]]
+        x2 = variable('xn')[:, :, [1]]
 
         # losses
         action_loss       = cfg["Q_u"]  * ((u == 0.0)          ^ 2)   # control penalty
         reference_loss_position    = cfg["Q_r"]  * ((ref[:, -refstep:, :]==x_pos[:, -refstep:, :])    ^ 2)   # track [x,y]
-        reference_loss_velocity    = cfg["Q_v"]  * ((x_vel[:, -1:, :] == 0.0)    ^ 2)
         state_smoothing   = cfg["Q_dx"] * ((x[:, 1:, :] == x[:, :-1, :] ) ^ 2)   # Δx penalty
         control_smoothing = cfg["Q_du"] * ((u[:, 1:, :] == u[:, :-1, :] ) ^ 2)   # Δu penalty
 
@@ -350,7 +349,7 @@ class SparsePolicyBuilder2D:
 
         # include in objectives
         objectives = [
-            reference_loss_position, reference_loss_velocity, action_loss,
+            reference_loss_position, action_loss,
             state_smoothing, control_smoothing, action_final, u_at_r
         ]
 
@@ -424,3 +423,225 @@ class SparsePolicyBuilder2D:
                                "Call `set_logger(logger)` first.")
         best_state = self.trainer.train()
         self.trainer.model.load_state_dict(best_state)
+
+
+
+class SparsePolicyBuilder:
+    """
+    Convenience wrapper that assembles
+
+        policy → clamp → integrator → objectives/constraints → trainer
+
+    Typical usage
+    -------------
+    ```python
+    # 1) build everything *except* the trainer/logger
+    builder = SparsePolicyBuilder(
+        fx_models=fx_models, nx=nx, nu=nu, nref=1,
+        ts=ts, nsteps=nsteps,
+        train_loader=train_loader, dev_loader=dev_loader,
+        bounds=bounds, config=config,
+        seed=42, device=device,
+        is_sindy=True, gt_model=None,           # leave default
+        logger=None                             # <- defer logger
+    )
+
+    # 2) create a custom logger that needs the policies
+    logger = CustomLogger(
+        args=None, save_dir="logs/",
+        verbosity=10, stdout=['train_loss', 'dev_loss'],
+        fx_policies=builder.policies,
+        pol_configs=config
+    )
+
+    # 3) hand the logger back and build the trainer
+    builder.set_logger(logger)
+
+    # 4) training
+    best_state = builder.train()
+    ```
+
+    If you’re happy with a basic logger:
+
+    ```python
+    basic_logger = BasicLogger(...)
+
+    builder = SparsePolicyBuilder(
+        ..., logger=basic_logger   # trainer constructed immediately
+    )
+    best_state = builder.train()
+    ```
+    """
+
+    # ------------------------------- ctor ---------------------------------- #
+    def __init__(
+        self,
+        *,
+        dynamics_model: SINDyVectorized,
+        policy: SINDyVectorized,
+        ts: float,
+        nsteps: int,
+        train_loader,
+        dev_loader,
+        bounds: Dict[str, torch.Tensor | float],
+        config: Dict[str, float | int],
+        device: torch.device,
+        is_sindy: bool = True,
+        gt_model: Optional[ode.ODESystem] = None,
+        logger=None                     # may be None –> call set_logger later
+    ) -> None:
+
+        self.device = device
+        self._config = config  # stash for later
+        self._train_loader = train_loader
+        self._dev_loader = dev_loader
+        self._bounds = bounds
+
+        # 0.  generate policy block ------------------ #
+        self.policy = policy
+
+        # 1.  build system graph (policy → integrator) --------------------- #
+        self._build_system(dynamics_model, ts, nsteps, bounds,
+                           is_sindy=is_sindy, gt_model=gt_model)
+
+        # 2.  objectives, constraints, Problem ---------------------------- #
+        self._build_problem(bounds, config)
+
+        # 3.  build trainer *IF* a logger is supplied ---------------------- #
+        self.trainer = None
+        if logger is not None:
+            self.set_logger(logger)
+
+        self.problem.show()
+
+    # ====================================================================== #
+    # internal helpers
+    # ====================================================================== #
+
+    def _build_system(
+            self,
+            dynamics_model: SINDyVectorized,
+            ts: float,
+            nsteps: int,
+            bounds,
+            *,
+            is_sindy: bool,
+            gt_model: Optional[ode.ODESystem]
+    ):
+        umin, umax = bounds["umin"], bounds["umax"]
+
+        if isinstance(self.policy, SINDyVectorized):
+            policy_node = Node(
+                lambda xn, r: torch.clamp(self.policy(xn, r), umin, umax),
+                ['xn', 'r'], ['u'],
+                name="policy_combined"
+            )
+        else:
+            policy_node = self.policy
+
+        integrator = (integrators.RK4(dynamics_model, h=ts) if is_sindy else
+                      integrators.RK4(gt_model, h=torch.tensor(ts)))
+
+        integrator_node = Node(integrator, ['xn', 'u'], [f'xn'], name="x_integrator")
+        self.system = System([policy_node, integrator_node], nsteps=nsteps)
+
+    def _build_problem(self, bounds, cfg):
+        xmin, xmax = bounds["xmin"], bounds["xmax"]
+
+        x   = variable('xn')
+        ref = variable('r')
+        u = variable('u')
+        reg = cfg["reg_coef"] * ((x == ref) ^ 2);  reg.name = "state_loss"
+
+        action_loss = cfg["Q_u"] * ((u == 0.0) ^ 2)  # control penalty
+        state_smoothing = cfg["Q_dx"] * ((x[:, 1:, :] == x[:, :-1, :]) ^ 2)  # Δx penalty
+        control_smoothing = cfg["Q_du"] * ((u[:, 1:, :] == u[:, :-1, :]) ^ 2)  # Δu penalty
+
+        objectives = [
+            reg, action_loss, state_smoothing, control_smoothing
+        ]
+
+        if isinstance(self.policy, SINDyVectorized):
+            l1_policy = variable([x], lambda x: sum(torch.norm(p, p=1) for p in self.policy.Xi))
+            l1_pen = cfg["l1_coef"] * (l1_policy == 0)
+            l1_pen.name = f"loss_l1_policy"
+
+        c = cfg["const_coef"]
+        constraints = [
+            c * (x > xmin),                      # lower
+            c * (x < xmax),                      # upper
+            c * (x[:, [-1], :] > ref - 1e-2),    # terminal lower
+            c * (x[:, [-1], :] < ref + 1e-2)     # terminal upper
+        ]
+        for n, nm in zip(constraints,
+                         ["x_min", "x_max", "y_N_min", "y_N_max"]):
+            n.name = nm
+
+        for n, nm in zip(objectives,
+                         ["reference_loss_position", "action_loss", "state_smoothing", "control_smoothing"]):
+            n.name = nm
+        loss = PenaltyLoss([*objectives, l1_pen] if isinstance(self.policy, SINDyVectorized) else [*objectives], constraints)
+        self.problem = Problem([self.system], loss)
+
+    def _instantiate_trainer(self, logger):
+        cfg = self._config
+        lr = cfg["lr"]
+        if isinstance(self.policy, SINDyVectorized):
+
+            self.trainer = SparseTrainer(
+                problem=self.problem,
+                sindy=self.policy,
+                lr=lr,
+                train_data=self._train_loader,
+                dev_data=self._dev_loader,
+                optimizers=torch.optim.AdamW(self.policy.parameters(), lr=lr),
+                epochs=cfg["epochs"],
+                train_metric='train_loss',
+                eval_metric='dev_loss',
+                logger=logger,
+                device=self.device,
+                threshold=cfg["threshold"],
+                prune_every=cfg["prune_every"],
+                prune_every_min=cfg["prune_every_min"],
+                prune_every_decay=cfg["prune_every_decay"],
+                change_prune_every=cfg["change_prune_every"],
+                threshold_mult=cfg["threshold_mult"],
+                threshold_max=cfg["threshold_max"],
+                prune_noise=cfg["prune_noise"],
+                lr_decay_gamma=cfg["lr_decay_gamma"],
+                lr_decay_step=cfg["lr_decay_step"],
+                l1_decay=cfg["l1_decay"],
+
+            )
+        else:
+            print(self.policy)
+            self.trainer = Trainer(self.problem,
+                    train_data=self._train_loader,
+                    dev_data=self._dev_loader,
+                    optimizer=torch.optim.AdamW(self.policy.parameters(), lr=lr),
+                    epochs=cfg["epochs"],
+                    train_metric='train_loss',
+                    eval_metric='dev_loss',
+                    warmup=cfg["warmup"],
+                    patience=cfg["patience"],
+                    logger=logger
+                    )
+
+    # ====================================================================== #
+    # public API
+    # ====================================================================== #
+
+    def set_logger(self, logger):
+        """
+        Plug-in a logger **after** the builder has been created.
+        If a trainer already exists it will be replaced.
+        """
+        self._instantiate_trainer(logger)
+
+    def train(self):
+        if self.trainer is None:
+            raise RuntimeError("Logger not set → trainer not built. "
+                               "Call `set_logger(logger)` first.")
+        best_state = self.trainer.train()
+        self.trainer.model.load_state_dict(best_state)
+
