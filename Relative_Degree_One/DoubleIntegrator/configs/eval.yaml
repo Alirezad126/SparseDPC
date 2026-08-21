@@ -1,0 +1,44 @@
+# Stage 5 - fixed-controller comparison across seeds.
+# Inherit the SD-DPC horizon, loss coefficients, action scale, and scenario rectangles.
+inherit: policy.yaml
+seed: 0
+n_seeds: 20
+eval_nsteps: 300
+evaluation_plant: nominal
+# Scenario rectangles and obstacle geometry are inherited unchanged from policy.yaml.
+# Q_con_du is safety-only; every DPC/MPC loss coefficient comes from policy.yaml.
+weights: {Q_con_du: 1.0}
+bands: {obstacle: 0.5, box: 0.5, du: 0.01}
+du_max: 0.2
+# Arrival is the first step after which ||x-r||_2 stays <= 0.05 through the end;
+# the final five samples must all satisfy the tolerance.
+reach_tolerance: 0.05
+reach_hold_steps: 5
+methods:
+  - mpc
+  - sd_dpc
+  - nn_dpc
+nn_policy: {layers: [32, 32], activation: gelu}
+inference_benchmark: {warmup: 10, repeats: 200, iters: 1000, batch_size: 1, seed: 0}
+
+# Each solve optimizes the complete inherited policy.nsteps (=100) trajectory with the
+# DoubleIntegrator SD-DPC loss. All 100 controls are then executed open loop unless the
+# actual reference changes or the evaluation ends; there is no per-step re-optimization.
+mpc:
+  mode: dpc_open_loop
+  integration_method: euler
+  match_dpc_constraints: true
+  # The objective retains the DPC soft penalties, while MPC additionally guarantees a
+  # hard-feasible trajectory. Positive margins absorb IPOPT feasibility tolerance.
+  enforce_state_bounds: true
+  enforce_safety_constraints: true
+  enforce_control_rate_constraints: true
+  constraint_margin: 1.0e-4
+  state_bound_margin: 1.0e-4
+  control_rate_margin: 1.0e-5
+  warm_start: true
+  max_iter: 3000
+  tol: 1.0e-8
+  acceptable_tol: 1.0e-7
+  acceptable_iter: 10
+  print_level: 0

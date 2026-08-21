@@ -1,0 +1,19 @@
+# Stage 3 - unconstrained adaptation under parametric noise on c1, c2.
+seed: 0
+nsteps: 300
+action_scale: 1.0
+x0_min: 0.1
+x0_max: 0.9
+ref_target: [0.6, 0.6]
+perturbation: {c1: 0.10, c2: 0.05}
+weights: {Q_con_x: 20.0, Q_con_du: 1.0}
+bands: {box: 0.05, du: 0.01}
+du_max: 0.3
+unconstrained:
+  gamma_ref: 0.1
+  clip_update: 0.5
+  ref_backend: autograd        # symbolic to compare autograd vs. symbolic Jacobian
+  action_gradient_mode: straight_through
+  action_gradient_band: 0.1
+  action_gradient_leak: 0.05
+  adaptive_gamma: false

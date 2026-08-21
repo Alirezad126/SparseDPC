@@ -1,0 +1,52 @@
+# Stage 5a: nominal controller comparison, with no adaptation or perturbation.
+seed: 11
+n_trajectories: 20
+nsteps: 1000
+n_references: 4
+action_scale: 1.0
+x0_min: 0.2
+x0_max: 0.7
+
+# Each trajectory samples four different scalar targets and applies the same target
+# to x0 and x1. Each target is held for exactly 250 control steps.
+reference:
+  mode: random
+  min: 0.15
+  max: 0.85
+
+weights:
+  Q_r: 20.0
+  Q_u: 0.0
+  Q_dx: 0.0
+  Q_du: 0.0
+  Q_con: 20.0
+  Q_con_x: 20.0
+  Q_con_du: 1.0
+bands: {box: 0.01, du: 0.00}
+du_max: 1.0
+
+nn_policy: {layers: [32, 32], activation: gelu}
+# Legacy policy-only timing protocol from TwoTank_Results.ipynb.
+inference_benchmark: {warmup: 10, repeats: 200, iters: 1000, batch_size: 1, seed: 0}
+
+# Match the Stage 2 DPC training problem: a 50-step prediction horizon and the same
+# tracking, effort, state/control smoothing, box, and terminal coefficients. MPC receives
+# only the reference active at the real current step and holds it across its horizon.
+mpc:
+  mode: receding_horizon
+  horizon: 50
+  integration_method: rk4
+  match_dpc_constraints: true
+  terminal_tol: 1.0e-2
+  enforce_state_bounds: false
+  enforce_safety_constraints: false
+  warm_start: true
+  max_iter: 2000
+  tol: 1.0e-6
+  acceptable_tol: 1.0e-4
+  acceptable_iter: 15
+  mu_strategy: adaptive
+  hessian_approximation: exact
+  bound_push: 1.0e-6
+  bound_frac: 1.0e-6
+  print_level: 0

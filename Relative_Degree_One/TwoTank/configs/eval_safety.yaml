@@ -1,0 +1,89 @@
+# Stage 5b: online safety comparison under the same perturbed true plant.
+seed: 23
+n_trajectories: 10
+nsteps: 1000
+n_references: 4
+action_scale: 1.0
+xmin: 0.2
+xmax: 0.8
+initial_fraction_range: [0.20, 0.70]
+
+# Fractions are relative to [xmin, xmax]. Every trajectory contains the configured
+# edge targets plus two random interior targets. Both tank reference channels match.
+reference:
+  mode: safety_edges
+  edge_fractions: [0.15, 0.90]
+  interior_fraction_range: [0.20, 0.80]
+  shuffle: true
+
+perturbation: {c1: 0.12, c2: 0.02}
+weights: {Q_con_x: 50.0, Q_con_du: 1.0}
+# `box` is an absolute state clearance from xmin/xmax. Scenario construction rejects
+# overlapping margins or references outside [xmin + box, xmax - box].
+bands: {box: 0.05, du: 0.00}
+du_max: 1.0
+
+# Timed once because all four methods use the same sparse-policy architecture.
+inference_benchmark: {warmup: 10, repeats: 200, iters: 1000, batch_size: 1, seed: 0}
+
+unconstrained:
+  gamma_ref: 3.0
+  clip_update: 0.5
+  action_scale: 1.0
+  ref_backend: autograd
+  action_gradient_mode: straight_through
+  action_gradient_band: 0.1
+  action_gradient_leak: 0.05
+  integration_method: rk4
+  adaptive_gamma: false
+  gamma_ref_min: 0.01
+  gamma_ref_max: 0.2
+  gamma_err_scale: 0.2
+
+safe:
+  horizon: 10
+  gamma_ref: 3.0
+  gamma_safe: 0.5
+  clip_update: 0.5
+  safety_grad_max_norm: 5.0
+  safety_gain: 1.0
+  max_safety_iters: 50
+  barrier_kind: squared_hinge
+  barrier_eps: 1.0e-6
+  safety_loss_tol: 1.0e-10
+  action_scale: 1.0
+  integration_method: rk4
+  ref_backend: autograd
+  safety_backend: autograd
+  # Reference and safety derivatives share this clamp-gradient mode while every
+  # forward rollout and plant step keeps the hard-clamped action.
+  action_gradient_mode: straight_through
+  action_gradient_band: 0.1
+  action_gradient_leak: 0.05
+  adaptive_gamma: false
+  gamma_ref_min: 0.01
+  gamma_ref_max: 0.2
+  gamma_err_scale: 0.2
+  verbose: false
+
+psf:
+  horizon: 10
+  gamma_ref: 3.0
+  clip_update: 0.5
+  action_scale: 1.0
+  action_gradient_mode: straight_through
+  action_gradient_band: 0.1
+  action_gradient_leak: 0.05
+  integration_method: rk4
+  adaptive_gamma: false
+  gamma_ref_min: 0.01
+  gamma_ref_max: 0.2
+  gamma_err_scale: 0.2
+  # Match the barrier method's absolute state clearance.
+  default_buffer: 0.0
+  buffers: {box: 0.05, du: 0.00}
+  tail_weight: 0.0
+  smooth_weight: 0.0
+  max_iter: 500
+  tol: 1.0e-6
+  verbose: false

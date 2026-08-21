@@ -1,0 +1,87 @@
+# Four small obstacles sampled along the policy's unobstructed adapted route.
+# The start/reference remain inside the rectangles used for policy training.
+seed: 3
+nsteps: 300
+init_center: [3, -3]
+init_side: 2.0
+ref_center: [-3, 3]
+ref_side: 2.0
+action_scale: 1.0
+
+scenario:
+  x0: [0.0, -3.2]
+  reference: [-3.0, 1.0]
+
+# Exact perturbed deployment dynamics, shared by barrier prediction and PSF.
+perturbation:
+  A: [[1.0, 0.02], [0.02, 1.0]]
+  B: [[0.5, 0.0], [0.0, 0.5]]
+
+# Centers are arc-length samples of the unobstructed trajectory. Small offsets
+# and rotations avoid an artificial wall while still intersecting that route.
+obstacles:
+  - {name: obstacle_1, p: 0.8, b: 2.0, c:  0.1908, d: -1.893, theta: 2.8493}
+  - {name: obstacle_2, p: 0.8, b: 2.2, c: -1.9218, d: -1.0300, theta: 3.0295}
+  - {name: obstacle_3, p: 0.8, b: 2.0, c: -2.8760, d:  0.0810, theta: 1.3948}
+  - {name: obstacle_4, p: 0.8, b: 2.2, c: -2.2491, d:  1.6195, theta: 0.8145}
+
+# A tighter plotting/safety box stays inside the system's [-5, 5] arena.
+safe_xmin: -4.0
+safe_xmax: 4.0
+weights:
+  Q_con_obs: 20.0
+  Q_con_x: 20.0
+  Q_con_du: 1.0
+bands:
+  obstacle: 0.2
+  box: 0.05
+  du: 0.005
+du_max: 0.35
+
+safe:
+  horizon: 15
+  gamma_ref: 0.01
+  gamma_safe: 0.01
+  clip_update: 0.08
+  safety_grad_max_norm: 1.0
+  safety_gain: 1.0
+  max_safety_iters: 50
+  barrier_kind: relaxed_log
+  barrier_eps: 1.0e-6
+  safety_loss_tol: 1.0e-10
+  action_scale: 1.0
+  integration_method: euler
+  ref_backend: symbolic
+  safety_backend: symbolic
+  action_gradient_mode: leaky_straight_through
+  action_gradient_band: 0.5
+  action_gradient_leak: 0.1
+  adaptive_gamma: true
+  gamma_ref_min: 0.02
+  gamma_ref_max: 0.5
+  gamma_err_scale: 0.2
+  verbose: false
+
+psf:
+  horizon: 15
+  gamma_ref: 0.01
+  clip_update: 0.08
+  action_scale: 1.0
+  action_gradient_mode: leaky_straight_through
+  action_gradient_band: 0.5
+  action_gradient_leak: 0.1
+  integration_method: euler
+  adaptive_gamma: true
+  gamma_ref_min: 0.02
+  gamma_ref_max: 0.5
+  gamma_err_scale: 0.2
+  default_buffer: 0.0
+  buffers:
+    obstacle: 0.2
+    box: 0.05
+    du: 0.005
+  tail_weight: 0.0
+  smooth_weight: 0.0
+  max_iter: 500
+  tol: 1.0e-3
+  verbose: false

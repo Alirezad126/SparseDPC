@@ -1,0 +1,60 @@
+seed: 0
+nsteps: 1500
+action_scale: 1.0
+xmin: 0.2
+xmax: 0.8
+initial_fraction_range:
+- 0.2
+- 0.7
+reference:
+  kind: equal
+  relative_to_bounds: true
+  levels:
+  - - 0.8
+    - 0.8
+  - - 0.25
+    - 0.25
+  - - 0.45
+    - 0.45
+  - - 0.8
+    - 0.8
+  - - 0.35
+    - 0.35
+perturbation:
+  c1: 0.14
+  c2: 0.03
+weights:
+  Q_con_x: 50.0
+  Q_con_du: 1.0
+bands:
+  box: 0.06
+  du: 0.0
+du_max: 1.0
+safe:
+  horizon: 5
+  gamma_ref: 2.0
+  gamma_safe: 0.5
+  clip_update: 1.0
+  safety_grad_max_norm: 1.0
+  max_safety_iters: 50
+  barrier_kind: squared_hinge
+  ref_backend: symbolic
+  safety_backend: symbolic
+  safety_action_gradient: straight_through
+  integration_method: rk4
+  adaptive_gamma: false
+psf:
+  horizon: 5
+  gamma_ref: 2.0
+  clip_update: 1.0
+  action_scale: 1.0
+  integration_method: rk4
+  adaptive_gamma: false
+  buffers:
+    box: 0.06
+    du: 0.0
+  tail_weight: 1.0e-06
+  smooth_weight: 0.001
+  max_iter: 500
+  tol: 1.0e-06
+_snapshot_time: '2026-07-20 03:56:21'

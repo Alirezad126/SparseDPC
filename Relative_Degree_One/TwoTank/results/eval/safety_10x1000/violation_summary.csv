@@ -1,0 +1,5 @@
+method,n_trajectories,trajectories_with_violations,trajectory_violation_fraction,total_violations,mean_violations_per_trajectory,median_violations_per_trajectory,max_violations_per_trajectory,total_state_violations,total_control_rate_violations
+frozen,10,10,1.0,166,16.6,17.0,17,166,0
+unconstrained,10,10,1.0,97,9.7,8.5,18,97,0
+barrier,10,4,0.4,28,2.8,0.0,12,28,0
+psf,10,0,0.0,0,0.0,0.0,0,0,0

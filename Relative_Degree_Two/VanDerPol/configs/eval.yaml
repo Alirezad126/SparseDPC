@@ -1,0 +1,32 @@
+# Stage 5 - fixed-controller comparison only; no adaptation methods.
+inherit: policy.yaml
+seed: 0
+n_seeds: 20
+eval_nsteps: 300
+evaluation_plant: nominal
+x0_min: -4.0
+x0_max: 4.0
+ref_target: [0.0, 0.0]
+safe_xmin: -5.0
+safe_xmax: 5.0
+weights:
+  Q_con_x: 20.0
+methods: [mpc, sd_dpc, nn_dpc]
+nn_policy: {layers: [32, 32], activation: gelu}
+reach_tolerance: 0.05
+reach_hold_steps: 5
+inference_benchmark: {warmup: 10, repeats: 200, iters: 1000, batch_size: 1, seed: 0}
+
+mpc:
+  mode: dpc_open_loop
+  integration_method: rk4
+  match_dpc_constraints: true
+  terminal_tol: 1.0e-2
+  enforce_state_bounds: false
+  enforce_safety_constraints: false
+  warm_start: true
+  max_iter: 1000
+  tol: 1.0e-6
+  acceptable_tol: 1.0e-4
+  acceptable_iter: 15
+  print_level: 0

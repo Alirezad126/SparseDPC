@@ -1,0 +1,72 @@
+# Asymmetric mixed-size 1-2-1 layout with a right-shifted interior doorway.
+seed: 3
+nsteps: 300
+init_center: [3, -3]
+init_side: 2.0
+ref_center: [-3, 3]
+ref_side: 2.0
+scenario:
+  x0: [2.2, -2.2]
+  reference: [-2.2, 2.2]
+
+action_scale: 1.0
+safe_xmin: -3.3
+safe_xmax: 3.3
+perturbation:
+  A: [[1.0, 0.02], [0.02, 1.0]]
+  B: [[0.5, 0.0], [0.0, 0.5]]
+
+obstacles:
+  - {name: obstacle_1, p: 1.60, b: 4.2, c: 0.70, d: -0.80, theta: 1.650796}
+  - {name: obstacle_2, p: 3.40, b: 6.2, c: -2.10, d: 0.20, theta: 1.590796}
+  - {name: obstacle_3, p: 2.40, b: 5.4, c: 2.60, d: 0.20, theta: 1.550796}
+  - {name: obstacle_4, p: 1.20, b: 3.8, c: -0.70, d: 1.20, theta: 1.490796}
+
+weights: {Q_con_obs: 20.0, Q_con_x: 10.0, Q_con_du: 1.0}
+bands: {obstacle: 0.15, box: 0.10, du: 0.005}
+du_max: 0.35
+
+safe:
+  horizon: 35
+  gamma_ref: 0.035
+  gamma_safe: 0.02
+  clip_update: 0.10
+  safety_grad_max_norm: 2.0
+  safety_gain: 1.0
+  max_safety_iters: 50
+  barrier_kind: squared_hinge
+  barrier_eps: 1.0e-6
+  safety_loss_tol: 1.0e-10
+  action_scale: 1.0
+  integration_method: euler
+  ref_backend: symbolic
+  safety_backend: symbolic
+  action_gradient_mode: leaky_straight_through
+  action_gradient_band: 0.5
+  action_gradient_leak: 0.1
+  adaptive_gamma: true
+  gamma_ref_min: 0.015
+  gamma_ref_max: 0.15
+  gamma_err_scale: 1.5
+  verbose: false
+
+psf:
+  horizon: 35
+  gamma_ref: 0.035
+  clip_update: 0.10
+  action_scale: 1.0
+  integration_method: euler
+  action_gradient_mode: leaky_straight_through
+  action_gradient_band: 0.5
+  action_gradient_leak: 0.1
+  adaptive_gamma: true
+  gamma_ref_min: 0.015
+  gamma_ref_max: 0.15
+  gamma_err_scale: 1.5
+  default_buffer: 0.0
+  buffers: {obstacle: 0.15, box: 0.10, du: 0.005}
+  tail_weight: 0.0
+  smooth_weight: 0.0
+  max_iter: 500
+  tol: 1.0e-3
+  verbose: false

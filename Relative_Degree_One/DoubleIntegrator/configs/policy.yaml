@@ -1,0 +1,64 @@
+# Stage 2 - sparse dictionary policy (obstacle avoidance).
+seed: 0
+policy_seed: 5
+init_scale: 0.01            # scale initial policy coefficients (as in the notebook)
+action_scale: 1.0
+action_gradient_mode: leaky_straight_through
+action_gradient_band: 1.0
+action_gradient_leak: 0.5
+# sindy_path: results/models/dynamics/run_2/saved_models/sindy.pt  # else latest run is used
+# --- policy data (positions sampled outside the ellipse) ---
+nsteps: 100
+n_samples: 1000
+batch_size: 100
+eval_seed: 0
+eval_margin: 0.1
+init_center: [3, -3]
+init_side: 2.0
+ref_center: [-3, 3]
+ref_side: 2.0
+refstep: 1
+ellipse: {p: 3, b: 1, c: 0.0, d: 0.0, theta: 0.0}
+# --- optimiser / schedule ---
+lr: 0.0015
+grad_clip: 10.0
+proximal_l1: false
+epochs: 6000
+threshold: 0.002
+prune_every: 500
+prune_every_min: 500
+prune_every_decay: 50
+change_prune_every: true
+threshold_mult: 2.0
+threshold_max: 0.01
+prune_noise: 0.0
+lr_decay_enabled: true
+lr_decay_gamma: 0.95
+lr_decay_step: 100
+l1_decay: 1.0
+warmup: 100
+patience: 50
+verbosity: 1
+logger_metrics:
+  - train_loss
+  - dev_loss
+  - train_tracking_loss
+  - dev_tracking_loss
+  - train_l1_loss
+  - dev_l1_loss
+  - train_constraint_loss
+  - dev_constraint_loss
+  - train_total_control_action_l1
+  - dev_total_control_action_l1
+  - learning_rate
+# --- DPC loss weights ---
+weights:
+  Q_r: 50.0
+  Q_u: 100.0
+  Q_uf: 1.0
+  Q_dx: 0.0
+  Q_du: 10.0
+  Q_con_obs: 200.0
+  Q_con_x: 1.0
+  Q_con_u: 1.0
+  l1_coef: 5.0e-4

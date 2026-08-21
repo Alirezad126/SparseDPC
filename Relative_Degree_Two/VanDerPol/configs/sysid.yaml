@@ -1,0 +1,16 @@
+# Stage 1 - SINDy identification of the conventional one-input Van der Pol system.
+seed: 0
+nsim: 2000
+nsteps: 2
+bs: 2000
+lr: 1.0e-3
+epochs: 20000
+warmup: 300
+patience: 50
+threshold: 0.05
+prune_every: 5000
+threshold_mult: 1.09
+prune_noise: 0.05
+l1_decay: 0.3
+verbosity: 500
+weights: {onestep_coef: 1.0, ref_coef: 2.0, l1_coef: 1.0e-6}

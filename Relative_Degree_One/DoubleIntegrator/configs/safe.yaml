@@ -1,0 +1,59 @@
+# Stage 4 - barrier-augmented safe online adaptation (Algorithm 2).
+seed: 3
+nsteps: 100
+ellipse: {p: 5, b: 3, c: -0.5, d: 0.0, theta: -0.60}
+init_center: [3, -3]
+init_side: 1.5
+ref_center: [-2.5, 2.0]
+ref_side: 0.001
+action_scale: 1.0
+perturbation:
+  A: [[1.0, 0.05], [0.05, 1.0]]
+  B: [[1.0, 0.0], [0.0, 1.0]]
+# safety spec: obstacle + state box + control-rate limit
+weights: {Q_con_obs: 20.0, Q_con_x: 10.0, Q_con_du: 1.0}
+bands: {obstacle: 4.0, box: 0.1, du: 0.0001}
+du_max: 0.25
+metrics:
+  reach_tolerance: 0.05
+  reach_hold_steps: 5
+safe:
+  horizon: 15
+  gamma_ref: 0.05
+  gamma_safe: 0.005
+  clip_update: 0.5
+  safety_grad_max_norm: 1.0
+  max_safety_iters: 50
+  barrier_kind: relaxed_log     # "squared_hinge", "relaxed_log", "relu_hinge", or box-only "box_relu_constraints"/"box_barrier_constraints"
+  barrier_eps: 1.0e-6
+  action_scale: 1.0
+  ref_backend: symbolic         # reference-step sensitivity: "autograd" or "symbolic"
+  safety_backend: symbolic      # safety-gradient step: "autograd" or "symbolic"
+  action_gradient_mode: leaky_straight_through  # shared by reference and safety derivatives
+  action_gradient_band: 0.5
+  action_gradient_leak: 0.05
+  integration_method: euler       # ignored for this discrete system; valid values: "rk4" or "euler"
+  adaptive_gamma: true
+  gamma_ref_min: 0.02
+  gamma_ref_max: 0.6
+  gamma_err_scale: 1.5
+
+# Predictive Safety Filter baseline. The NLP is built once, then warm-started.
+psf:
+  horizon: 15
+  gamma_ref: 0.05
+  clip_update: 0.5
+  action_scale: 1.0
+  action_gradient_mode: leaky_straight_through
+  action_gradient_band: 0.5
+  action_gradient_leak: 0.05
+  integration_method: euler       # ignored for this discrete system
+  adaptive_gamma: true
+  gamma_ref_min: 0.05
+  gamma_ref_max: 0.6
+  gamma_err_scale: 1.5
+  buffers: {obstacle: 4.0, box: 0.1, du: 0.001}
+  tail_weight: 0.0
+  smooth_weight: 0.0
+  max_iter: 1000
+  tol: 5.0e-3

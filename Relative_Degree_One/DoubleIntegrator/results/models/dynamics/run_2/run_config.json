@@ -1,0 +1,14 @@
+{
+    "onestep_coef": 1.0,
+    "ref_coef": 2.0,
+    "l1_coef": 1e-09,
+    "l1_decay": 0.3,
+    "lr": 0.001,
+    "epochs": 20000,
+    "threshold": 0.01,
+    "prune_every": 5000,
+    "threshold_mult": 1.05,
+    "prune_noise": 0.05,
+    "warmup": 300,
+    "patience": 50
+}

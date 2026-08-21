@@ -1,0 +1,29 @@
+# Stage 3 - unconstrained reference-tracking adaptation (perturbed plant).
+seed: 3
+nsteps: 300
+# deployment obstacle + init/ref regions (harder than training)
+ellipse: {p: 8, b: 9, c: 0.0, d: 0.0, theta: -0.4833}
+init_center: [3, -3]
+init_side: 1.5
+ref_center: [-3, 3]
+ref_side: 1.5
+action_scale: 1.0
+# parametric perturbation of the plant (state coupling + halved input gain)
+perturbation:
+  A: [[1.0, 0.02], [0.02, 1.0]]
+  B: [[0.5, 0.0], [0.0, 0.5]]
+# safety spec (used only for reporting violations here)
+weights: {Q_con_obs: 2000.0, Q_con_x: 10.0, Q_con_du: 1.0}
+bands: {obstacle: 0.5, box: 0.5, du: 0.01}
+du_max: 0.2
+unconstrained:
+  gamma_ref: 0.1
+  clip_update: 0.5
+  ref_backend: autograd        # or: symbolic
+  action_gradient_mode: straight_through
+  action_gradient_band: 0.1
+  action_gradient_leak: 0.05
+  adaptive_gamma: true
+  gamma_ref_min: 0.01
+  gamma_ref_max: 0.2
+  gamma_err_scale: 0.2

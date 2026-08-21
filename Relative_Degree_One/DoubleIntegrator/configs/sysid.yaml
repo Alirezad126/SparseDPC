@@ -1,0 +1,24 @@
+# Stage 1 - SINDy system identification (DoubleIntegrator, discrete A/B plant).
+seed: 0
+# --- data ---
+nsim: 1500
+nsteps: 2
+bs: 1500
+x0_range: [-20.0, 20.0]
+# --- optimiser / schedule ---
+lr: 1.0e-3
+epochs: 20000
+warmup: 300
+patience: 50
+# --- pruning ---
+threshold: 0.01
+prune_every: 5000
+threshold_mult: 1.05
+prune_noise: 0.05
+l1_decay: 0.3
+verbosity: 500
+# --- loss weights ---
+weights:
+  onestep_coef: 1.0
+  ref_coef: 2.0
+  l1_coef: 1.0e-9

@@ -1,0 +1,30 @@
+{
+  "tracking_mse": 0.004492448642849922,
+  "control_cost_l1": 252.30703735351562,
+  "control_cost_l2": 45.182273864746094,
+  "control_smoothness_rms": 0.032199352979660034,
+  "mean_du_l2": 0.003901984542608261,
+  "max_du_l2": 0.8534986972808838,
+  "control_total_variation_l1": 6.692953109741211,
+  "violation_magnitude": 0.0,
+  "num_state_violations": 0,
+  "num_violations": 0,
+  "min_state_margin": 0.061473309993743896,
+  "min_safety_margin": 0.061473309993743896,
+  "control_rate_violation_magnitude": 0.0,
+  "num_control_rate_violations": 0,
+  "min_control_rate_margin": 0.27153992652893066,
+  "success": 1,
+  "sparsity_total_terms": 6,
+  "sparsity_per_output": [
+    4,
+    2
+  ],
+  "runtime_total_s": 6.004489369457588,
+  "runtime_per_step_s": 0.0040029929129717255,
+  "runtime_median_step_s": 0.0034667084692046046,
+  "total_adaptation_iters": 190,
+  "mean_adaptation_iters": 0.12666666666666668,
+  "mean_barrier_loss": 1.3598023959624876e-08,
+  "num_realized_violations": 0
+}

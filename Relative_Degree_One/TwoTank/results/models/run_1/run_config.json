@@ -1,0 +1,23 @@
+{
+    "reg_coef": 20.0,
+    "l1_coef": 0.01,
+    "const_coef": 20.0,
+    "Q_u": 0.0,
+    "Q_du": 0.0,
+    "Q_dx": 0.0,
+    "lr": 0.005,
+    "epochs": 4999,
+    "threshold": 0.2,
+    "prune_every": 600,
+    "threshold_mult": 1.17,
+    "prune_noise": 0.02,
+    "prune_every_min": 300,
+    "prune_every_decay": 50,
+    "change_prune_every": true,
+    "threshold_max": 0.4,
+    "lr_decay_gamma": 0.95,
+    "lr_decay_step": 50,
+    "l1_decay": 0.9999,
+    "warmup": 100,
+    "patience": 50
+}

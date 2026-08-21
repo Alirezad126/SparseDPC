@@ -1,0 +1,4 @@
+method,n_trajectories,trajectories_with_violations,trajectory_violation_fraction,total_violations,mean_violations_per_trajectory,median_violations_per_trajectory,max_violations_per_trajectory,total_state_violations,total_control_rate_violations
+mpc,20,0,0.0,0,0.0,0.0,0,0,0
+sd_dpc,20,0,0.0,0,0.0,0.0,0,0,0
+nn_dpc,20,1,0.05,2,0.1,0.0,2,2,0

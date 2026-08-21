@@ -1,0 +1,79 @@
+# Stage 4 - barrier-augmented safe adaptation.
+seed: 0
+nsteps: 1500
+action_scale: 1.0
+xmin: 0.2
+xmax: 0.8
+initial_fraction_range: [0.20, 0.70]
+# Add or remove as many normalized reference points as needed. Values are fractions
+# of [xmin, xmax]. The 1500 control steps are divided equally among the points.
+reference:
+  kind: equal
+  relative_to_bounds: true
+  levels:
+    - [0.80, 0.80]
+    - [0.25, 0.25]
+    - [0.45, 0.45]
+    - [0.80, 0.80]
+    - [0.35, 0.35]
+perturbation: {c1: 0.14, c2: 0.03}
+weights: {Q_con_x: 50.0, Q_con_du: 1.0}
+bands: {box: 0.06, du: 0.00}
+du_max: 1.0
+metrics:
+  reach_tolerance: 0.05
+  reach_hold_steps: 5
+
+# The effective reference clearance is max(bands.box, psf.buffers.box). Configuration
+# construction rejects overlapping clearances and references outside the resulting core.
+
+# Alternative reference generators (replace the active `reference` block above):
+# reference:
+#   kind: manual                      # explicitly chosen hold lengths
+#   relative_to_bounds: true
+#   segments: [[[0.15, 0.15], 501], [[0.90, 0.75], 500], [[0.50, 0.50], 500]]
+# reference:
+#   kind: step                        # neuromancer.psl.signals generator
+#   relative_to_bounds: true
+#   min: 0.2
+#   max: 0.9
+#   randsteps: 6
+safe:
+  horizon: 20
+  gamma_ref: 2.0
+  gamma_safe: 0.4
+  clip_update: 1.0
+  safety_grad_max_norm: 1.0
+  max_safety_iters: 50
+  barrier_kind: squared_hinge   # "squared_hinge", "relaxed_log", "relu_hinge", "box_relu_constraints", or "box_barrier_constraints"
+  ref_backend: symbolic         # reference-step sensitivity: "autograd" or "symbolic"
+  safety_backend: symbolic      # safety-gradient step: "autograd" or "symbolic"
+  # Reference and safety derivatives share this clamp-gradient mode while every
+  # forward rollout and plant step keeps the hard-clamped action.
+  action_gradient_mode: straight_through
+  action_gradient_band: 0.1
+  action_gradient_leak: 0.05
+  integration_method: rk4       # continuous prediction: "rk4" or faster/lower-order "euler"
+                                 # (symbolic = forward-sensitivity recursion, see
+                                 # sdpc.adaptation.safety_jacobian and
+                                 # notebooks/04b_safe_adaptation_jacobian.ipynb)
+  adaptive_gamma: true
+  gamma_ref_min: 2.0
+  gamma_ref_max: 5.0
+  gamma_err_scale: 0.1
+# Predictive Safety Filter baseline. Uses exact perturbed RK4 dynamics in CasADi.
+psf:
+  horizon: 20
+  gamma_ref: 2.0
+  clip_update: 1.0
+  action_scale: 1.0
+  action_gradient_mode: straight_through
+  action_gradient_band: 0.1
+  action_gradient_leak: 0.05
+  integration_method: rk4
+  adaptive_gamma: false
+  buffers: {box: 0.06, du: 0.00}
+  tail_weight: 1.0e-6
+  smooth_weight: 1.0e-3
+  max_iter: 500
+  tol: 1.0e-6
