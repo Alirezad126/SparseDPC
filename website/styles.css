@@ -231,6 +231,9 @@ html[lang="en"] .lang__off{opacity:1}
   body{font-size:16px}
   .sec{padding:72px 0}
   .burger{display:flex}
+  /* The nav CTA crowds the burger on narrow screens and swallows its taps;
+     the phone number is reachable from the hero, the visit block and the footer. */
+  .nav__act .btn--sm{display:none}
   .nav__links{
     position:absolute;top:72px;left:0;right:0;
     flex-direction:column;gap:0;
